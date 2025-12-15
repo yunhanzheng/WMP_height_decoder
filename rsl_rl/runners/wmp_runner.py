@@ -40,11 +40,9 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
-from rsl_rl.algorithms import AMPPPO, PPO
+from rsl_rl.algorithms import PPO
 from rsl_rl.modules import ActorCritic, ActorCriticWMP, ActorCriticRecurrent
 from rsl_rl.env import VecEnv
-from rsl_rl.algorithms.amp_discriminator import AMPDiscriminator
-from rsl_rl.datasets.motion_loader import AMPLoader
 from rsl_rl.utils.utils import Normalizer
 from rsl_rl.modules import DepthPredictor
 import torch.optim as optim
@@ -104,24 +102,8 @@ class WMPRunner:
                                           wm_feature_dim=self.wm_feature_dim,
                                           **self.policy_cfg).to(self.device)
 
-        amp_data = AMPLoader(
-            device, time_between_frames=self.env.dt, preload_transitions=True,
-            num_preload_transitions=train_cfg['runner']['amp_num_preload_transitions'],
-            motion_files=self.cfg["amp_motion_files"])
-        amp_normalizer = Normalizer(amp_data.observation_dim)
-        discriminator = AMPDiscriminator(
-            amp_data.observation_dim * 2,
-            train_cfg['runner']['amp_reward_coef'],
-            train_cfg['runner']['amp_discr_hidden_dims'], device,
-            train_cfg['runner']['amp_task_reward_lerp']).to(self.device)
-
-        # self.discr: AMPDiscriminator = AMPDiscriminator()
         alg_class = eval(self.cfg["algorithm_class_name"])  # PPO
-        min_std = (
-                torch.tensor(self.cfg["min_normalized_std"], device=self.device) *
-                (torch.abs(self.env.dof_pos_limits[:, 1] - self.env.dof_pos_limits[:, 0])))
-        self.alg: PPO = alg_class(actor_critic, discriminator, amp_data, amp_normalizer, device=self.device,
-                                  min_std=min_std, **self.alg_cfg)
+        self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
 
@@ -189,11 +171,9 @@ class WMPRunner:
                                                              high=int(self.env.max_episode_length))
         obs = self.env.get_observations()
         privileged_obs = self.env.get_privileged_observations()
-        amp_obs = self.env.get_amp_observations()
         critic_obs = privileged_obs if privileged_obs is not None else obs
-        obs, critic_obs, amp_obs = obs.to(self.device), critic_obs.to(self.device), amp_obs.to(self.device)
+        obs, critic_obs = obs.to(self.device), critic_obs.to(self.device)
         self.alg.actor_critic.train()  # switch to train mode (for dropout for example)
-        self.alg.discriminator.train()
 
         ep_infos = []
         rewbuffer = deque(maxlen=100)
@@ -250,14 +230,12 @@ class WMPRunner:
                         wm_is_first[:] = 0
 
                     history = self.trajectory_history.flatten(1).to(self.device)
-                    actions = self.alg.act(obs, critic_obs, amp_obs, history, wm_feature.to(self.env.device))
-                    obs, privileged_obs, rewards, dones, infos, reset_env_ids, terminal_amp_states = self.env.step(
-                        actions)
-                    next_amp_obs = self.env.get_amp_observations()
+                    actions = self.alg.act(obs, critic_obs, history, wm_feature.to(self.env.device))
+                    obs, privileged_obs, rewards, dones, infos, reset_env_ids, _ = self.env.step(actions)
 
                     critic_obs = privileged_obs if privileged_obs is not None else obs
-                    obs, critic_obs, next_amp_obs, rewards, dones = obs.to(self.device), critic_obs.to(
-                        self.device), next_amp_obs.to(self.device), rewards.to(self.device), dones.to(self.device)
+                    obs, critic_obs, rewards, dones = obs.to(self.device), critic_obs.to(
+                        self.device), rewards.to(self.device), dones.to(self.device)
 
                     # update world model input
                     wm_action_history = torch.concat(
@@ -314,14 +292,7 @@ class WMPRunner:
 
                         wm_reward[:] = 0
 
-                    # Account for terminal states.
-                    next_amp_obs_with_term = torch.clone(next_amp_obs)
-                    next_amp_obs_with_term[reset_env_ids] = terminal_amp_states
-
-                    rewards = self.alg.discriminator.predict_amp_reward(
-                        amp_obs, next_amp_obs_with_term, rewards, normalizer=self.alg.amp_normalizer)[0]
-                    amp_obs = torch.clone(next_amp_obs)
-                    self.alg.process_env_step(rewards, dones, infos, next_amp_obs_with_term)
+                    self.alg.process_env_step(rewards, dones, infos)
 
                     # process trajectory history
                     env_ids = dones.nonzero(as_tuple=False).flatten()
@@ -350,7 +321,7 @@ class WMPRunner:
                 # Learning step
                 start = stop
                 self.alg.compute_returns(critic_obs, wm_feature.to(self.env.device))
-            mean_value_loss, mean_surrogate_loss, mean_vel_predict_loss, mean_amp_loss, mean_grad_pen_loss, mean_policy_pred, mean_expert_pred = self.alg.update()
+            mean_value_loss, mean_surrogate_loss, mean_vel_predict_loss = self.alg.update()
             stop = time.time()
             learn_time = stop - start
             if self.log_dir is not None:
@@ -375,8 +346,8 @@ class WMPRunner:
             print('training world model time:', time.time() - start_time)
 
             # copy the config file
-            if(it == 0):
-                os.system("cp ./legged_gym/envs/a1/a1_amp_config.py " + self.log_dir + "/")
+            # if(it == 0):
+            #     os.system("cp ./legged_gym/envs/a1/a1_amp_config.py " + self.log_dir + "/")
 
         self.current_learning_iteration += num_learning_iterations
         self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)))
@@ -501,11 +472,7 @@ class WMPRunner:
         self.writer.add_scalar('Loss/value_function', locs['mean_value_loss'], locs['it'])
         self.writer.add_scalar('Loss/surrogate', locs['mean_surrogate_loss'], locs['it'])
         self.writer.add_scalar('Loss/vel_predict', locs['mean_vel_predict_loss'], locs['it'])
-        self.writer.add_scalar('Loss/AMP', locs['mean_amp_loss'], locs['it'])
-        self.writer.add_scalar('Loss/AMP_grad', locs['mean_grad_pen_loss'], locs['it'])
         self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
-        self.writer.add_scalar('Loss/AMP_mean_policy_pred', locs['mean_policy_pred'], locs['it'])
-        self.writer.add_scalar('Loss/AMP_mean_expert_pred', locs['mean_expert_pred'], locs['it'])
         self.writer.add_scalar('Policy/mean_noise_std', mean_std.item(), locs['it'])
         self.writer.add_scalar('Perf/total_fps', fps, locs['it'])
         self.writer.add_scalar('Perf/collection time', locs['collection_time'], locs['it'])
@@ -526,10 +493,6 @@ class WMPRunner:
                           f"""{'Value function loss:':>{pad}} {locs['mean_value_loss']:.4f}\n"""
                           f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
                           f"""{'Vel predict loss:':>{pad}} {locs['mean_vel_predict_loss']:.4f}\n"""
-                          f"""{'AMP loss:':>{pad}} {locs['mean_amp_loss']:.4f}\n"""
-                          f"""{'AMP grad pen loss:':>{pad}} {locs['mean_grad_pen_loss']:.4f}\n"""
-                          f"""{'AMP mean policy pred:':>{pad}} {locs['mean_policy_pred']:.4f}\n"""
-                          f"""{'AMP mean expert pred:':>{pad}} {locs['mean_expert_pred']:.4f}\n"""
                           f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n"""
                           f"""{'Mean reward:':>{pad}} {statistics.mean(locs['rewbuffer']):.2f}\n"""
                           f"""{'Mean episode length:':>{pad}} {statistics.mean(locs['lenbuffer']):.2f}\n""")

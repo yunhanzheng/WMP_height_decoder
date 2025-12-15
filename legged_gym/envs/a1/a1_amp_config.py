@@ -28,14 +28,10 @@
 #
 # Copyright (c) 2021 ETH Zurich, Nikita Rudin
 
-# This file may have been modified by Bytedance Ltd. and/or its affiliates (“Bytedance's Modifications”).
+# This file may have been modified by Bytedance Ltd. and/or its affiliates ("Bytedance's Modifications").
 # All Bytedance's Modifications are Copyright (year) Bytedance Ltd. and/or its affiliates.
 
-import glob
-
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
-
-MOTION_FILES = glob.glob('datasets/mocap_motions/*')
 
 
 class A1AMPCfg(LeggedRobotCfg):
@@ -49,9 +45,6 @@ class A1AMPCfg(LeggedRobotCfg):
         forward_height_dim = 525 # for depth image prediction
         num_observations = prop_dim + privileged_dim + height_dim + action_dim
         num_privileged_obs = prop_dim + privileged_dim + height_dim + action_dim
-        reference_state_initialization = False
-        reference_state_initialization_prob = 0.85
-        amp_motion_files = MOTION_FILES
 
     class terrain:
         mesh_type = "trimesh"  # "heightfield" # none, plane, heightfield or trimesh
@@ -328,25 +321,16 @@ class A1AMPCfgPPO(LeggedRobotCfgPPO):
     class algorithm(LeggedRobotCfgPPO.algorithm):
         entropy_coef = 0.01
         vel_predict_coef = 1.0
-        amp_replay_buffer_size = 1000000
         num_learning_epochs = 5
         num_mini_batches = 4
 
     class runner(LeggedRobotCfgPPO.runner):
         run_name = 'flat_push1'
         experiment_name = 'a1_amp_example'
-        algorithm_class_name = 'AMPPPO'
+        algorithm_class_name = 'PPO'
         policy_class_name = 'ActorCritic'
         max_iterations = 20000  # number of policy updates
         save_interval = 1000
-
-        amp_reward_coef = 0.5 * 0.02  # set to 0 means not use amp reward
-        amp_motion_files = MOTION_FILES
-        amp_num_preload_transitions = 2000000
-        amp_task_reward_lerp = 0.3
-        amp_discr_hidden_dims = [1024, 512]
-
-        min_normalized_std = [0.05, 0.02, 0.05] * 4
 
     class depth_predictor:
         lr = 3e-4
