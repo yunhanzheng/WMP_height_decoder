@@ -355,7 +355,7 @@ class WMPRunner:
             start_time = time.time()
             if (sum_wm_dataset_size > self.wm_config.train_start_steps):
 
-                if(it % self.depth_predictor_cfg["training_interval"] == 0):
+                if(self.env.cfg.depth.use_camera and it % self.depth_predictor_cfg["training_interval"] == 0):
                 # Train Depth Predictor
                     depth_mse_loss = self.train_depth_predictor()
                     self.writer.add_scalar('DepthPredictor/loss', depth_mse_loss, it)
