@@ -195,42 +195,42 @@ class GO2BlindRoughCfg( LeggedRobotCfg ):
             ang_vel = 0.2
             gravity = 0.05
             height_measurements = 0  # only for critic
-  
-    # class rewards( LeggedRobotCfg.rewards ):
-    #     soft_dof_pos_limit = 0.9
-    #     base_height_target = 0.25
-    #     class scales( LeggedRobotCfg.rewards.scales ):
-    #         torques = -0.0002
-    #         dof_pos_limits = -10.0
 
     class rewards(LeggedRobotCfg.rewards):
-        reward_curriculum = True
-        reward_curriculum_term = ["feet_edge"]
-        reward_curriculum_schedule = [[4000, 10000, 0.1, 1.0]]
-
-        soft_dof_pos_limit = 0.9
-        base_height_target = 0.25
-        foot_height_target = 0.15
-        tracking_sigma = 0.15  # tracking reward = exp(-error^2/sigma)
-        lin_vel_clip = 0.1
-
-        class scales(LeggedRobotCfg.rewards.scales):
-            tracking_lin_vel = 1.5
+        reward_curriculum = False
+        class scales:
+            termination = -0.1
+            tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
-            torques = -0.0001
+            lin_vel_z = -0.1
+            ang_vel_xy = -0.01
+            orientation = -0.01
             dof_acc = -2.5e-7
-            base_height = -0.
-            feet_air_time = 0.5
-            collision = -1.0
-            feet_stumble = -0.1
-            action_rate = -0.03
+            joint_power = -2e-5
+            base_height = -0.0
+            foot_clearance = 0.0
+            action_rate = -0.0002
+            smoothness = -0.0001
+            feet_air_time = 0.01
+            collision = -0.1
+            feet_stumble = -0.5
+            stand_still = -0.01  # Penalize motion at zero commands
+            torques = -0.0
+            dof_vel = -0.0
+            dof_pos_limits = -0.0
+            dof_vel_limits = -0.0
+            torque_limits = -0.0
 
-            feet_edge = -1.0
-            dof_error = -0.04
-
-            lin_vel_z = -1.0
-            cheat = -1
-            stuck = -1
+        only_positive_rewards = (
+            False  # if true negative total rewards are clipped at zero (avoids early termination problems)
+        )
+        tracking_sigma = 0.25  # tracking reward = exp(-error^2/sigma)
+        soft_dof_pos_limit = 1.0  # percentage of urdf limits, values above this limit are penalized
+        soft_dof_vel_limit = 1.0
+        soft_torque_limit = 1.0
+        base_height_target = 0.30
+        max_contact_force = 100.0  # forces above this value are penalized
+        clearance_height_target = -0.1
         
     class commands:
         curriculum = False
@@ -278,13 +278,13 @@ class GO2BlindRoughCfgPPO( LeggedRobotCfgPPO ):
         num_mini_batches = 4
 
     class runner( LeggedRobotCfgPPO.runner ):
-        run_name = 'WMP'
-        experiment_name = 'go2'
+        run_name = ''
+        experiment_name = 'go2_blind'
         algorithm_class_name = 'PPO'
         policy_class_name = 'ActorCritic'
         max_iterations = 20000  # number of policy updates
-        save_interval = 1000
-        use_wandb = True
+        save_interval = 100
+        use_wandb = False
 
     class depth_predictor:
         lr = 3e-4
