@@ -84,10 +84,6 @@ def play(args):
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
     env_cfg.commands.ranges.heading = [0, 0]
 
-    env_cfg.commands.ranges.flat_lin_vel_x = [0.6, 0.6]
-    env_cfg.commands.ranges.flat_lin_vel_y = [-0.0, -0.0]
-    env_cfg.commands.ranges.flat_ang_vel_yaw = [0.0, 0.0]
-
     env_cfg.depth.use_camera = True
 
     # prepare environment

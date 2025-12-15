@@ -239,24 +239,15 @@ class GO2BlindRoughCfg( LeggedRobotCfg ):
         max_lin_vel_y_curriculum = 0.0
         max_ang_vel_yaw_curriculum = 1.0
 
-        max_flat_lin_vel_forward_x_curriculum = 1.0
-        max_flat_lin_vel_backward_x_curriculum = 0.0
-        max_flat_lin_vel_y_curriculum = 0.0
-        max_flat_ang_vel_yaw_curriculum = 1.0
         num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10.  # time before command are changed[s]
         heading_command = True  # if true: compute ang vel command from heading error
 
         class ranges:
-            lin_vel_x = [0.0, 0.8]  # min max [m/s]
-            lin_vel_y = [-0., 0.]  # min max [m/s]
-            ang_vel_yaw = [-1.0, 1.0]  # min max [rad/s]
-            heading = [-0., 0.]
-
-            flat_lin_vel_x = [-0.0, 0.8]  # min max [m/s]
-            flat_lin_vel_y = [-0.0, 0.0]  # min max [m/s]
-            flat_ang_vel_yaw = [-1.0, 1.0]  # min max [rad/s]
-            flat_heading = [-3.14 / 4, 3.14 / 4]
+            lin_vel_x = [-1.0, 1.0]  # min max [m/s]
+            lin_vel_y = [-1.0, 1.0]  # min max [m/s]
+            ang_vel_yaw = [-3.14, 3.14]  # min max [rad/s]
+            heading = [-3.14, 3.14]  # min max [rad/s]
 
 class GO2BlindRoughCfgPPO( LeggedRobotCfgPPO ):
     runner_class_name = 'WMPRunner'

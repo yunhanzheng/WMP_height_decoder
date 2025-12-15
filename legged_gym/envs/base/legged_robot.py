@@ -391,9 +391,6 @@ class LeggedRobot(BaseTask):
             self.extras["episode"]["max_command_x"] = self.command_ranges["lin_vel_x"][1]
             self.extras["episode"]["max_command_yaw"] = self.command_ranges["ang_vel_yaw"][1]
 
-            self.extras["episode"]["max_command_flat_x"] = self.command_ranges["flat_lin_vel_x"][1]
-            self.extras["episode"]["max_command_flat_yaw"] = self.command_ranges["flat_ang_vel_yaw"][1]
-
             self.extras["episode"]["push_interval_s"] = self.cfg.domain_rand.push_interval_s
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
@@ -659,20 +656,6 @@ class LeggedRobot(BaseTask):
         else:
             self.commands[env_ids, 2] = torch_rand_float(self.command_ranges["ang_vel_yaw"][0], self.command_ranges["ang_vel_yaw"][1], (len(env_ids), 1), device=self.device).squeeze(1)
 
-
-        #resample commands for rough flat terrain
-        flat_env_ids = env_ids[torch.where(env_ids >= self.roughflat_start_idx)]
-        if(len(flat_env_ids) > 0):
-            self.commands[flat_env_ids, 0] = torch_rand_float(self.command_ranges["flat_lin_vel_x"][0],
-                                                         self.command_ranges["flat_lin_vel_x"][1], (len(flat_env_ids), 1),
-                                                         device=self.device).squeeze(1)
-            self.commands[flat_env_ids, 1] = torch_rand_float(self.command_ranges["flat_lin_vel_y"][0],
-                                                         self.command_ranges["flat_lin_vel_y"][1], (len(flat_env_ids), 1),
-                                                         device=self.device).squeeze(1)
-            self.commands[flat_env_ids, 2] = torch_rand_float(self.command_ranges["flat_ang_vel_yaw"][0],
-                                                         self.command_ranges["flat_ang_vel_yaw"][1], (len(flat_env_ids), 1),
-                                                         device=self.device).squeeze(1)
-
         # set small commands to zero
         self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
 
@@ -879,20 +862,6 @@ class LeggedRobot(BaseTask):
                                                           -self.cfg.commands.max_ang_vel_yaw_curriculum, 0.)
             self.command_ranges["ang_vel_yaw"][1] = np.clip(self.command_ranges["ang_vel_yaw"][1] + 0.025, 0.,
                                                           self.cfg.commands.max_ang_vel_yaw_curriculum)
-
-            self.command_ranges["flat_lin_vel_x"][0] = np.clip(self.command_ranges["flat_lin_vel_x"][0] - 0.05,
-                                                          -self.cfg.commands.max_flat_lin_vel_backward_x_curriculum, 0.)
-            self.command_ranges["flat_lin_vel_x"][1] = np.clip(self.command_ranges["flat_lin_vel_x"][1] + 0.05, 0.,
-                                                          self.cfg.commands.max_flat_lin_vel_forward_x_curriculum)
-            self.command_ranges["flat_lin_vel_y"][0] = np.clip(self.command_ranges["flat_lin_vel_y"][0] - 0.05,
-                                                          -self.cfg.commands.max_flat_lin_vel_y_curriculum, 0.)
-            self.command_ranges["flat_lin_vel_y"][1] = np.clip(self.command_ranges["flat_lin_vel_y"][1] + 0.05, 0.,
-                                                          self.cfg.commands.max_flat_lin_vel_y_curriculum)
-
-            self.command_ranges["flat_ang_vel_yaw"][0] = np.clip(self.command_ranges["flat_ang_vel_yaw"][0] - 0.1,
-                                                          -self.cfg.commands.max_flat_ang_vel_yaw_curriculum, 0.)
-            self.command_ranges["flat_ang_vel_yaw"][1] = np.clip(self.command_ranges["flat_ang_vel_yaw"][1] + 0.1, 0.,
-                                                          self.cfg.commands.max_flat_ang_vel_yaw_curriculum)
 
             self.cfg.domain_rand.push_interval_s = max(self.cfg.domain_rand.push_interval_s - 0.5, self.cfg.domain_rand.min_push_interval_s)
             self.cfg.domain_rand.push_interval = np.ceil(self.cfg.domain_rand.push_interval_s / self.dt)

@@ -295,11 +295,6 @@ class A1AMPCfg(LeggedRobotCfg):
             ang_vel_yaw = [-1.0, 1.0]  # min max [rad/s]
             heading = [-0., 0.]
 
-            flat_lin_vel_x = [-0.0, 0.8]  # min max [m/s]
-            flat_lin_vel_y = [-0.0, 0.0]  # min max [m/s]
-            flat_ang_vel_yaw = [-1.0, 1.0]  # min max [rad/s]
-            flat_heading = [-3.14 / 4, 3.14 / 4]
-
 
 class A1AMPCfgPPO(LeggedRobotCfgPPO):
     runner_class_name = 'WMPRunner'
