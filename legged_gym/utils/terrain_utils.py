@@ -405,9 +405,7 @@ def stepping_stones_terrain(
     return terrain
 
 
-def convert_heightfield_to_trimesh(
-    height_field_raw, horizontal_scale, vertical_scale, slope_threshold=None
-):
+def convert_heightfield_to_trimesh(height_field_raw, horizontal_scale, vertical_scale, slope_threshold=None):
     """
     Convert a heightfield array to a triangle mesh represented by vertices and triangles.
     Optionally, corrects vertical surfaces above the provide slope threshold:
@@ -427,6 +425,7 @@ def convert_heightfield_to_trimesh(
     Returns:
         vertices (np.array(float)): array of shape (num_vertices, 3). Each row represents the location of each vertex [meters]
         triangles (np.array(int)): array of shape (num_triangles, 3). Each row represents the indices of the 3 vertices connected by this triangle.
+        edge_mask (np.array(bool)): array indicating edges in the terrain
     """
     hf = height_field_raw
     num_rows = hf.shape[0]
@@ -436,32 +435,19 @@ def convert_heightfield_to_trimesh(
     x = np.linspace(0, (num_rows - 1) * horizontal_scale, num_rows)
     yy, xx = np.meshgrid(y, x)
 
+    move_x = np.zeros((num_rows, num_cols))
     if slope_threshold is not None:
-
         slope_threshold *= horizontal_scale / vertical_scale
-        move_x = np.zeros((num_rows, num_cols))
         move_y = np.zeros((num_rows, num_cols))
         move_corners = np.zeros((num_rows, num_cols))
-        move_x[: num_rows - 1, :] += (
-            hf[1:num_rows, :] - hf[: num_rows - 1, :] > slope_threshold
-        )
-        move_x[1:num_rows, :] -= (
-            hf[: num_rows - 1, :] - hf[1:num_rows, :] > slope_threshold
-        )
-        move_y[:, : num_cols - 1] += (
-            hf[:, 1:num_cols] - hf[:, : num_cols - 1] > slope_threshold
-        )
-        move_y[:, 1:num_cols] -= (
-            hf[:, : num_cols - 1] - hf[:, 1:num_cols] > slope_threshold
-        )
-        move_corners[: num_rows - 1, : num_cols - 1] += (
-            hf[1:num_rows, 1:num_cols] - hf[: num_rows - 1, : num_cols - 1]
-            > slope_threshold
-        )
+        move_x[:num_rows - 1, :] += (hf[1:num_rows, :] - hf[:num_rows - 1, :] > slope_threshold)
+        move_x[1:num_rows, :] -= (hf[:num_rows - 1, :] - hf[1:num_rows, :] > slope_threshold)
+        move_y[:, :num_cols - 1] += (hf[:, 1:num_cols] - hf[:, :num_cols - 1] > slope_threshold)
+        move_y[:, 1:num_cols] -= (hf[:, :num_cols - 1] - hf[:, 1:num_cols] > slope_threshold)
+        move_corners[:num_rows - 1, :num_cols - 1] += (
+                    hf[1:num_rows, 1:num_cols] - hf[:num_rows - 1, :num_cols - 1] > slope_threshold)
         move_corners[1:num_rows, 1:num_cols] -= (
-            hf[: num_rows - 1, : num_cols - 1] - hf[1:num_rows, 1:num_cols]
-            > slope_threshold
-        )
+                    hf[:num_rows - 1, :num_cols - 1] - hf[1:num_rows, 1:num_cols] > slope_threshold)
         xx += (move_x + move_corners * (move_x == 0)) * horizontal_scale
         yy += (move_y + move_corners * (move_y == 0)) * horizontal_scale
 
@@ -481,12 +467,11 @@ def convert_heightfield_to_trimesh(
         triangles[start:stop:2, 0] = ind0
         triangles[start:stop:2, 1] = ind3
         triangles[start:stop:2, 2] = ind1
-        triangles[start + 1 : stop : 2, 0] = ind0
-        triangles[start + 1 : stop : 2, 1] = ind2
-        triangles[start + 1 : stop : 2, 2] = ind3
+        triangles[start + 1:stop:2, 0] = ind0
+        triangles[start + 1:stop:2, 1] = ind2
+        triangles[start + 1:stop:2, 2] = ind3
 
-    return vertices, triangles
-
+    return vertices, triangles, move_x != 0
 
 class SubTerrain:
     def __init__(

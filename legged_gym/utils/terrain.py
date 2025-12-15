@@ -38,6 +38,7 @@ import numpy as np
 from numpy.random import choice
 from scipy.ndimage import binary_dilation
 
+# from isaacgym import terrain_utils
 from legged_gym.utils import terrain_utils
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg
 import tqdm
@@ -60,7 +61,6 @@ def to_shape(a, shape):
 
 class Terrain:
     def __init__(self, cfg: LeggedRobotCfg.terrain, num_robots) -> None:
-
         self.cfg = cfg
         self.num_robots = num_robots
         self.type = cfg.mesh_type
@@ -69,8 +69,7 @@ class Terrain:
         self.env_length = cfg.terrain_length
         self.env_width = cfg.terrain_width
         self.proportions = [
-            np.sum(cfg.terrain_proportions[: i + 1])
-            for i in range(len(cfg.terrain_proportions))
+            np.sum(cfg.terrain_proportions[: i + 1]) for i in range(len(cfg.terrain_proportions))
         ]
 
         self.cfg.num_sub_terrains = cfg.num_rows * cfg.num_cols
@@ -91,7 +90,6 @@ class Terrain:
                 hscale = float(os.environ["ISAAC_HOR_SCALE"])
             self.cfg.horizontal_scale *= hscale
 
-
             # self.curiculum(diff=1.0, obs_scale=2)
             self.height_field_raw = self.block_terrain(1600)
 
@@ -102,32 +100,20 @@ class Terrain:
                 episode_id = int(os.environ["ISAAC_EPISODE_ID"])
 
                 matching_files = glob.glob(f"episodes/{scene}_{episode_id}_*png")
-                assert(len(matching_files) == 1)
+                assert len(matching_files) == 1
                 shortest_path_im = np.array(imageio.v2.imread(matching_files[0]), dtype=np.int16)
                 mask = np.all(shortest_path_im == np.array([0, 0, 255])[None, None, :], axis=2)
                 self.shortest_path = np.where(mask)
 
                 # breakpoint()
 
-
             im = im[:, :, 3]
             scaled_im = im.repeat(3, axis=0).repeat(3, axis=1)
-            # scaled_im = im
             wall_map = to_shape(scaled_im, (900, 900))
-            # print("wall map: ", wall_map)
-            # print("wall map: ", np.unique(wall_map), wall_map.shape)
-            # print("wall map 50: ", np.unique(wall_map*), (wall_map*50).shape)
-            # print("heightfield: ", np.unique(self.height_field_raw), self.height_field_raw.shape)
-            
-            self.height_field_raw = (self.height_field_raw).astype(np.int16)# + wall_map*20
+
+            self.height_field_raw = (self.height_field_raw).astype(np.int16)  # + wall_map*20
             self.heightsamples = self.height_field_raw.copy()
-            self.height_field_raw += wall_map*1
-            # print("post heightfield: ", np.unique(self.height_field_raw), self.height_field_raw.shape)
-
-            # print("height field sum", self.height_field_raw.sum())
-            # self.selected_terrain()
-            # self.static()
-
+            self.height_field_raw += wall_map * 3
 
         elif cfg.curriculum:
             self.curiculum()
@@ -136,36 +122,21 @@ class Terrain:
             self.selected_terrain()
             self.heightsamples = self.height_field_raw
         else:
-            self.randomized_terrain()
+            self.randomized_terrain(cfg.difficulty)
             self.heightsamples = self.height_field_raw
         print("HEIGHT SAMPLES: ", np.unique(self.heightsamples))
         # self.heightsamples = self.height_field_raw
         if self.type == "trimesh":
-            # if cfg.map_path:
-                # hscale, vscale = 0.4, 4
-                # hscale = 0.4
-                # if os.environ["ISAAC_WALL_SCALE"] != "-1":
-                #     vscale = float(os.environ["ISAAC_WALL_SCALE"])
-                # if os.environ["ISAAC_HOR_SCALE"] != "-1":
-                    # hscale = float(os.environ["ISAAC_HOR_SCALE"])
-            # else:
-                # hscale, vscale = 1, 1
-                # hscale = 1
-            # hscale, vscale = 1, 1
-            # vscale=0.1
             print("Hor scale: ", self.cfg.horizontal_scale)
             print("vertical scale: ", self.cfg.vertical_scale)
-
-            # Import custom convert function that returns edge mask
-            from legged_gym.utils.trimesh import convert_heightfield_to_trimesh
             (
                 self.vertices,
                 self.triangles,
                 self.x_edge_mask,
-            ) = convert_heightfield_to_trimesh(
+            ) = terrain_utils.convert_heightfield_to_trimesh(
                 self.height_field_raw,
-                self.cfg.horizontal_scale,# * hscale,
-                self.cfg.vertical_scale,# * vscale,
+                self.cfg.horizontal_scale,  # * hscale,
+                self.cfg.vertical_scale,  # * vscale,
                 self.cfg.slope_treshold,
             )
 
@@ -180,7 +151,7 @@ class Terrain:
             #         # Add small blocks on the ground
             #         self.add_blocks()
             #         self.heightsamples = self.height_field_raw
-    
+
     def block_terrain(self, num_blocks):
         terrain = np.zeros((900, 900))
         rng = np.random.default_rng(12345)
@@ -192,30 +163,25 @@ class Terrain:
             width = np.random.choice([2, 3, 4, 5]) * 3
             x, y = xs[i], ys[i]
             if np.random.choice([0, 1]) == 1:
-                terrain[x:x+width, y:y+3] = 25
+                terrain[x : x + width, y : y + 3] = 25
             else:
-                terrain[x:x+3, y:y+width] = 25
+                terrain[x : x + 3, y : y + width] = 25
 
         return terrain
 
-
-    def randomized_terrain(self):
+    def randomized_terrain(self, difficulty=1.0):
         for k in range(self.cfg.num_sub_terrains):
             # Env coordinates in the world
             (i, j) = np.unravel_index(k, (self.cfg.num_rows, self.cfg.num_cols))
 
             choice = np.random.uniform(0, 1)
-            difficulty = np.random.choice([0.5, 0.75, 0.9])
+            # difficulty = np.random.choice([0.5, 0.75, 0.9])
             terrain = self.make_terrain(choice, difficulty)
             self.add_terrain_to_map(terrain, i, j)
 
     def curiculum(self, diff=None, obs_scale=1):
-        num_cols = (
-            self.cfg.tot_cols if hasattr(self.cfg, "tot_cols") else self.cfg.num_cols
-        )
-        num_rows = (
-            self.cfg.tot_rows if hasattr(self.cfg, "tot_rows") else self.cfg.num_rows
-        )
+        num_cols = self.cfg.tot_cols if hasattr(self.cfg, "tot_cols") else self.cfg.num_cols
+        num_rows = self.cfg.tot_rows if hasattr(self.cfg, "tot_rows") else self.cfg.num_rows
         for j in range(num_cols):
             for i in range(num_rows):
                 difficulty = i / self.cfg.num_rows if diff is None else diff
@@ -234,11 +200,15 @@ class Terrain:
                 "terrain",
                 width=self.width_per_env_pixels,
                 length=self.width_per_env_pixels,
-                vertical_scale=self.vertical_scale,
-                horizontal_scale=self.horizontal_scale,
+                vertical_scale=self.cfg.vertical_scale,
+                horizontal_scale=self.cfg.horizontal_scale,
             )
 
-            eval(terrain_type)(terrain, **self.cfg.terrain_kwargs.terrain_kwargs)
+            # Try to get the function from terrain_utils module first, then from globals
+            terrain_fn = getattr(terrain_utils, terrain_type, None)
+            if terrain_fn is None:
+                terrain_fn = globals()[terrain_type]
+            terrain_fn(terrain, **self.cfg.terrain_kwargs.terrain_kwargs)
             self.add_terrain_to_map(terrain, i, j)
 
     def make_terrain(self, choice, difficulty, obs_scale=1):
@@ -259,13 +229,9 @@ class Terrain:
         if choice < self.proportions[0]:
             if choice < self.proportions[0] / 2:
                 slope *= -1
-            terrain_utils.pyramid_sloped_terrain(
-                terrain, slope=slope, platform_size=3.0
-            )
+            terrain_utils.pyramid_sloped_terrain(terrain, slope=slope, platform_size=3.0)
         elif choice < self.proportions[1]:
-            terrain_utils.pyramid_sloped_terrain(
-                terrain, slope=slope, platform_size=3.0
-            )
+            terrain_utils.pyramid_sloped_terrain(terrain, slope=slope, platform_size=3.0)
             terrain_utils.random_uniform_terrain(
                 terrain,
                 min_height=-0.05,
@@ -292,30 +258,29 @@ class Terrain:
                 platform_size=3.0,
             )
         elif choice < self.proportions[5]:
-            # print("MAKING TERRAIN HERE")
-            num_rectangles = int(200 * difficulty)
-            # num_rectangles = 0
+            # Domino terrain
+            num_rectangles = int(400 * difficulty)
             rectangle_min_size = 2 * obs_scale
-            rectangle_max_size = 5 * obs_scale
+            rectangle_max_size = 3 * obs_scale
             terrain_utils.discrete_obstacles_terrain_cells(
                 terrain,
-                # float(os.environ["ISAAC_BLOCK_MIN_HEIGHT"]),
-                # float(os.environ["ISAAC_BLOCK_MAX_HEIGHT"]),
                 0.10,
                 0.15,
                 rectangle_min_size,
                 rectangle_max_size,
                 num_rectangles,
                 platform_size=3.0,
-                width = 2 * obs_scale
+                width=2 * obs_scale,
             )
         elif choice < self.proportions[6]:
-            terrain_utils.stepping_stones_terrain(
+            # stripes obstacle terrain
+            max_filled_rate = 0.6
+            min_filled_rate = 0.1
+            terrain_utils.discrete_stripes_obstacle_terrain(
                 terrain,
-                stone_size=stepping_stones_size,
-                stone_distance=stone_distance,
-                max_height=0.0,
-                platform_size=4.0,
+                height=0.12,
+                filled_rate=min_filled_rate
+                + difficulty * (max_filled_rate - min_filled_rate),  # from 10% to 50%
             )
         elif choice < self.proportions[7]:
             gap_terrain(terrain, gap_size=gap_size, platform_size=3.0)
@@ -340,9 +305,7 @@ class Terrain:
         x2 = int((self.env_length / 2.0 + 1) / terrain.horizontal_scale)
         y1 = int((self.env_width / 2.0 - 1) / terrain.horizontal_scale)
         y2 = int((self.env_width / 2.0 + 1) / terrain.horizontal_scale)
-        env_origin_z = (
-            np.max(terrain.height_field_raw[x1:x2, y1:y2]) * terrain.vertical_scale
-        )
+        env_origin_z = np.max(terrain.height_field_raw[x1:x2, y1:y2]) * terrain.vertical_scale
         self.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
 
     def set_start_goal(self):
@@ -356,15 +319,10 @@ class Terrain:
                 # Select a random episode
                 episode_id = np.random.randint(10)
             matching_files = glob.glob(f"episodes/{scene}_{episode_id}_*png")
-            assert (
-                len(matching_files) <= 1
-            ), f"Too many episode matches: {matching_files}"
-            assert (
-                matching_files
-            ), f"Episode id {episode_id} for scene {scene} not found!"
+            assert len(matching_files) <= 1, f"Too many episode matches: {matching_files}"
+            assert matching_files, f"Episode id {episode_id} for scene {scene} not found!"
             start_goal = [
-                float(i)
-                for i in osp.basename(matching_files[0])[: -len(".png")].split("_")[2:6]
+                float(i) for i in osp.basename(matching_files[0])[: -len(".png")].split("_")[2:6]
             ]
             start = np.array(start_goal[:2])
             goal = np.array(start_goal[2:4])
@@ -379,9 +337,7 @@ class Terrain:
 
         # Convert coordinates to be proper terrain coordinates ("global")
         start, goal = [
-            np.array(
-                [-(89.9 * 250 / 900) + i[0], -(89.9 * 250 / 900) + i[1]]
-            )
+            np.array([-(89.9 * 250 / 900) + i[0], -(89.9 * 250 / 900) + i[1]])
             for i in [start, goal]
         ]
 
@@ -390,9 +346,7 @@ class Terrain:
         # Save info about terrain boundaries for floating camera placement
         x0, x1, y0, y1 = self.get_terrain_bounds()
         coors = [
-            np.array(
-                [-(89.9 * 250 / 900) + i[0], -(89.9 * 250 / 900) + i[1]]
-            )
+            np.array([-(89.9 * 250 / 900) + i[0], -(89.9 * 250 / 900) + i[1]])
             for i in [(x0, y0), (x1, y1)]
         ]
         os.environ["isaac_bounds"] = "_".join([str(i) for i in [*coors[0], *coors[1]]])
@@ -404,8 +358,7 @@ class Terrain:
         start, goal = None, None
         while not done:
             start, goal = [
-                np.array([np.random.uniform(x0, x1), np.random.uniform(y0, y1)])
-                for _ in range(2)
+                np.array([np.random.uniform(x0, x1), np.random.uniform(y0, y1)]) for _ in range(2)
             ]
             done = self.validate_start_goal(start, goal)
 
@@ -426,8 +379,7 @@ class Terrain:
         os.makedirs("episodes", exist_ok=True)
         scene = os.path.basename(self.cfg.map_path).split(".")[0]
         cv2.imwrite(
-            f"episodes/{scene}_"
-            f"{'_'.join([f'{i:.2f}' for i in [*start, *goal]])}.png",
+            f"episodes/{scene}_{'_'.join([f'{i:.2f}' for i in [*start, *goal]])}.png",
             img,
         )
         return start, goal
@@ -473,15 +425,9 @@ class Terrain:
                 s1, s2 = POTENTIAL_DIMS[np.random.randint(3)]
                 x = np.random.rand() * (x1 - x0) + x0
                 y = np.random.rand() * (y1 - y0) + y0
-                if (
-                    np.linalg.norm(np.array([x, y]) - self.terrain_start)
-                    < SPAWN_OBS_THRESH
-                ):
+                if np.linalg.norm(np.array([x, y]) - self.terrain_start) < SPAWN_OBS_THRESH:
                     continue
-                if (
-                    np.linalg.norm(np.array([x, y]) - self.terrain_goal)
-                    < SPAWN_OBS_THRESH
-                ):
+                if np.linalg.norm(np.array([x, y]) - self.terrain_goal) < SPAWN_OBS_THRESH:
                     continue
                 block_height = np.random.uniform(min_block_height, max_block_height)
                 new_block = (x, y, s1, s2, block_height)
@@ -517,9 +463,7 @@ class Terrain:
                 np.array(new_triangles, dtype=np.uint32) + self.vertices.shape[0],
             ]
         )
-        self.vertices = np.concatenate(
-            [self.vertices, np.array(new_vertices, dtype=np.float32)]
-        )
+        self.vertices = np.concatenate([self.vertices, np.array(new_vertices, dtype=np.float32)])
 
 
 def gap_terrain(terrain, gap_size, platform_size=1.0):
@@ -533,12 +477,8 @@ def gap_terrain(terrain, gap_size, platform_size=1.0):
     y1 = (terrain.width - platform_size) // 2
     y2 = y1 + gap_size
 
-    terrain.height_field_raw[
-        center_x - x2 : center_x + x2, center_y - y2 : center_y + y2
-    ] = -1000
-    terrain.height_field_raw[
-        center_x - x1 : center_x + x1, center_y - y1 : center_y + y1
-    ] = 0
+    terrain.height_field_raw[center_x - x2 : center_x + x2, center_y - y2 : center_y + y2] = -1000
+    terrain.height_field_raw[center_x - x1 : center_x + x1, center_y - y1 : center_y + y1] = 0
 
 
 def pit_terrain(terrain, depth, platform_size=1.0):
