@@ -105,7 +105,7 @@ class GO2BlindRoughCfg( LeggedRobotCfg ):
         decimation = 4
 
     class depth:
-        use_camera = True
+        use_camera = False
         camera_num_envs = 1024
         camera_terrain_num_rows = 10
         camera_terrain_num_cols = 20
@@ -177,12 +177,9 @@ class GO2BlindRoughCfg( LeggedRobotCfg ):
             com_pos = 20
             pd_gains = 5
 
-
         clip_observations = 100.
-        clip_actions = 6.0
-
+        clip_actions = 100.0
         base_height = 0.3 # base height of A1, used to normalize measured height
-
 
     class noise:
         add_noise = False
