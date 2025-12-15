@@ -97,6 +97,7 @@ def play(args):
     # load policy
     train_cfg.runner.resume = True
     train_cfg.runner.load_run = 'WMP'
+    train_cfg.runner.use_wandb = False
 
 
     train_cfg.runner.checkpoint = -1

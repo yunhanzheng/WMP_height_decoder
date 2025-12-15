@@ -39,6 +39,7 @@ import statistics
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 import torch
+import wandb
 
 from rsl_rl.algorithms import PPO
 from rsl_rl.modules import ActorCritic, ActorCriticWMP, ActorCriticRecurrent
@@ -117,6 +118,26 @@ class WMPRunner:
         self.tot_timesteps = 0
         self.tot_time = 0
         self.current_learning_iteration = 0
+
+        # Wandb logging
+        self.use_wandb = self.cfg.get("use_wandb", True)
+        if self.use_wandb:
+            wandb.login(key="25cff70399f95d2d6de6e901cd2e39c1a7d9214b")
+
+            # Extract reward scales from env config if available
+            reward_scales = {}
+            if hasattr(env, 'cfg') and hasattr(env.cfg, 'rewards') and hasattr(env.cfg.rewards, 'scales'):
+                scales = env.cfg.rewards.scales
+                for attr in dir(scales):
+                    if not attr.startswith('_'):
+                        reward_scales[f"reward_scales/{attr}"] = getattr(scales, attr)
+
+            wandb.init(
+                project="legged_gym_baseline",  # Replace with your project name
+                entity="ge48dur-technical-university-of-munich",  # Your wandb username
+                name=self.cfg.get("experiment_name", "run"),
+                config={**train_cfg, **reward_scales},
+            )
 
         _, _ = self.env.reset()
 
@@ -482,6 +503,22 @@ class WMPRunner:
             self.writer.add_scalar('Train/mean_episode_length', statistics.mean(locs['lenbuffer']), locs['it'])
             self.writer.add_scalar('Train/mean_reward/time', statistics.mean(locs['rewbuffer']), self.tot_time)
             self.writer.add_scalar('Train/mean_episode_length/time', statistics.mean(locs['lenbuffer']), self.tot_time)
+
+        # Wandb logging
+        if self.use_wandb:
+            wandb_log = {
+                "Loss/value_function": locs["mean_value_loss"],
+                "Loss/surrogate": locs["mean_surrogate_loss"],
+                "Loss/learning_rate": self.alg.learning_rate,
+                "Policy/mean_noise_std": mean_std.item(),
+                "Perf/total_fps": fps,
+                "Perf/collection_time": locs["collection_time"],
+                "Perf/learning_time": locs["learn_time"],
+            }
+            if len(locs["rewbuffer"]) > 0:
+                wandb_log["Train/mean_reward"] = statistics.mean(locs["rewbuffer"])
+                wandb_log["Train/mean_episode_length"] = statistics.mean(locs["lenbuffer"])
+            wandb.log(wandb_log, step=locs["it"])
 
         str = f" \033[1m Learning iteration {locs['it']}/{self.current_learning_iteration + locs['num_learning_iterations']} \033[0m "
 

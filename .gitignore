@@ -24,3 +24,6 @@ env/
 
 # Project specific
 resources/maps/
+
+#wandb
+wandb/
