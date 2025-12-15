@@ -271,8 +271,8 @@ class GO2BlindRoughCfgPPO( LeggedRobotCfgPPO ):
         algorithm_class_name = 'PPO'
         policy_class_name = 'ActorCritic'
         max_iterations = 20000  # number of policy updates
-        save_interval = 100
-        use_wandb = False
+        save_interval = 1000
+        use_wandb = True
 
     class depth_predictor:
         lr = 3e-4

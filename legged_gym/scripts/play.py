@@ -51,13 +51,14 @@ import torch
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     # override some parameters for testing
-    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 10)
+    # env_cfg.env.num_envs = min(env_cfg.env.num_envs, 50)
+    env_cfg.env.num_envs = 1
+    env_cfg.terrain.num_rows = 5
     env_cfg.terrain.num_cols = 1
     env_cfg.terrain.curriculum = False
+    env_cfg.terrain.difficulty = 1.0  # use 0.15 for stripe obstacle
+
     env_cfg.noise.add_noise = False
-    # env_cfg.domain_rand.randomize_friction = False
-    # env_cfg.domain_rand.randomize_restitution = False
-    # env_cfg.commands.heading_command = True
 
     env_cfg.domain_rand.friction_range = [1.0, 1.0]
     env_cfg.domain_rand.restitution_range = [0.0, 0.0]
@@ -79,12 +80,10 @@ def play(args):
     env_cfg.domain_rand.stiffness_multiplier_range = [1.0, 1.0]
     env_cfg.domain_rand.damping_multiplier_range = [1.0, 1.0]
 
-    env_cfg.commands.ranges.lin_vel_x = [0.6, 0.6]
-    env_cfg.commands.ranges.lin_vel_y = [-0.0, -0.0]
+    env_cfg.commands.ranges.lin_vel_x = [1.0, 1.0]
+    env_cfg.commands.ranges.lin_vel_y = [0.0, 0.0]
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
-    env_cfg.commands.ranges.heading = [0, 0]
-
-    env_cfg.depth.use_camera = True
+    env_cfg.commands.ranges.heading = [0.0, 0.0]
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
@@ -92,7 +91,6 @@ def play(args):
     obs = env.get_observations()
     # load policy
     train_cfg.runner.resume = True
-    train_cfg.runner.load_run = 'WMP'
     train_cfg.runner.use_wandb = False
 
 
@@ -195,7 +193,7 @@ def play(args):
                 env.gym.write_viewer_image_to_file(env.viewer, filename)
                 img_idx += 1 
         if MOVE_CAMERA:
-            lootat = env.root_states[8, :3]
+            lootat = env.root_states[robot_index, :3]
             camara_position = lootat.detach().cpu().numpy() + [0, 1, 0]
             env.set_camera(camara_position, lootat)
 
@@ -227,7 +225,7 @@ def play(args):
     print('total reward:', total_reward)
 
 if __name__ == '__main__':
-    EXPORT_POLICY = True
+    EXPORT_POLICY = False
     RECORD_FRAMES = False
     MOVE_CAMERA = True
     args = get_args()
