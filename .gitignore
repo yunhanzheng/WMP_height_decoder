@@ -27,3 +27,6 @@ resources/maps/
 
 #wandb
 wandb/
+
+#videos
+*.mkv
