@@ -209,7 +209,7 @@ class WMPRunner:
                                                     self.env.privileged_dim - self.env.height_dim - 3),
                                               device=self.device)
         obs_without_command = torch.concat((obs[:, self.env.privileged_dim:self.env.privileged_dim + 6],
-                                            obs[:, self.env.privileged_dim + 9:-self.env.height_dim]), dim=1)
+                                            obs[:, self.env.privileged_dim + 9:self.env.num_obs - self.env.height_dim]), dim=1)
         self.trajectory_history = torch.concat((self.trajectory_history[:, 1:], obs_without_command.unsqueeze(1)),
                                                dim=1)
 
@@ -319,7 +319,7 @@ class WMPRunner:
                     env_ids = dones.nonzero(as_tuple=False).flatten()
                     self.trajectory_history[env_ids] = 0
                     obs_without_command = torch.concat((obs[:, self.env.privileged_dim:self.env.privileged_dim + 6],
-                                                        obs[:, self.env.privileged_dim + 9:-self.env.height_dim]),
+                                                        obs[:, self.env.privileged_dim + 9:self.env.num_obs - self.env.height_dim]),
                                                        dim=1)
                     self.trajectory_history = torch.concat(
                         (self.trajectory_history[:, 1:], obs_without_command.unsqueeze(1)), dim=1)

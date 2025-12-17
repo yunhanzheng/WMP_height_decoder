@@ -6,11 +6,12 @@ class GO2BlindRoughCfg( LeggedRobotCfg ):
         include_history_steps = None  # Number of steps of history to include.
         prop_dim = 33 # proprioception
         action_dim = 12
-        privileged_dim = 24 + 26 + 3  # privileged_obs[:,:privileged_dim] is the privileged information in privileged_obs, include 3-dim base linear vel
-        height_dim = 187  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs
-        forward_height_dim = 525 # for depth image prediction
-        num_observations = prop_dim + privileged_dim + height_dim + action_dim
-        num_privileged_obs = prop_dim + privileged_dim + height_dim + action_dim
+        privileged_dim = 0  # privileged_obs[:,:privileged_dim] is the privileged information in privileged_obs, include 3-dim base linear vel
+        height_dim = 0  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs
+        forward_height_dim = 0 # for depth image prediction
+        num_observations = prop_dim + action_dim
+        num_privileged_obs = None  # Set to None for symmetric training (no privileged observations)
+        privileged_obs = False  # Disable extra privileged observations (domain randomization params)
 
     class terrain(LeggedRobotCfg.terrain):
         # domino terrain
@@ -25,7 +26,7 @@ class GO2BlindRoughCfg( LeggedRobotCfg ):
         terrain_width = 15.0
         num_rows = 10  # number of terrain rows (levels)
         num_cols = 10  # number of terrain cols (types)
-        measure_heights = True
+        measure_heights = False
         max_init_terrain_level = 5  # starting curriculum state
 
         measured_points_x = [

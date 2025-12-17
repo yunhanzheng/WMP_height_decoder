@@ -425,7 +425,8 @@ class LeggedRobot(BaseTask):
     def compute_observations(self):
         """ Computes observations
         """
-        self.privileged_obs_buf = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel,
+        # Build the full observation tensor (with base_lin_vel)
+        obs_with_vel = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel,
                                     self.base_ang_vel  * self.obs_scales.ang_vel,
                                     self.projected_gravity,
                                     self.commands[:, :3] * self.commands_scale,
@@ -434,46 +435,55 @@ class LeggedRobot(BaseTask):
                                     self.actions
                                     ),dim=-1)
 
-        if (self.cfg.env.privileged_obs):
-            # add perceptive inputs if not blind
-            if self.cfg.terrain.measure_heights:
-                heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - self.cfg.normalization.base_height - self.measured_heights, -1, 1.) * self.obs_scales.height_measurements
-                self.privileged_obs_buf = torch.cat((self.privileged_obs_buf, heights), dim=-1)
+        if self.num_privileged_obs is not None:
+            # Asymmetric training: privileged_obs_buf gets extra information
+            self.privileged_obs_buf = obs_with_vel
 
-            if self.cfg.domain_rand.randomize_friction:
-                self.privileged_obs_buf= torch.cat((self.randomized_frictions, self.privileged_obs_buf), dim=-1)
+            if (self.cfg.env.privileged_obs):
+                # add perceptive inputs if not blind
+                if self.cfg.terrain.measure_heights:
+                    heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - self.cfg.normalization.base_height - self.measured_heights, -1, 1.) * self.obs_scales.height_measurements
+                    self.privileged_obs_buf = torch.cat((self.privileged_obs_buf, heights), dim=-1)
 
-            if self.cfg.domain_rand.randomize_restitution:
-                self.privileged_obs_buf = torch.cat((self.randomized_restitutions, self.privileged_obs_buf), dim=-1)
+                if self.cfg.domain_rand.randomize_friction:
+                    self.privileged_obs_buf= torch.cat((self.randomized_frictions, self.privileged_obs_buf), dim=-1)
 
-            if (self.cfg.domain_rand.randomize_base_mass):
-                self.privileged_obs_buf = torch.cat((self.randomized_added_masses ,self.privileged_obs_buf), dim=-1)
+                if self.cfg.domain_rand.randomize_restitution:
+                    self.privileged_obs_buf = torch.cat((self.randomized_restitutions, self.privileged_obs_buf), dim=-1)
 
-            if (self.cfg.domain_rand.randomize_com_pos):
-                self.privileged_obs_buf = torch.cat((self.randomized_com_pos * self.obs_scales.com_pos ,self.privileged_obs_buf), dim=-1)
+                if (self.cfg.domain_rand.randomize_base_mass):
+                    self.privileged_obs_buf = torch.cat((self.randomized_added_masses ,self.privileged_obs_buf), dim=-1)
 
-            if (self.cfg.domain_rand.randomize_gains):
-                self.privileged_obs_buf = torch.cat(((self.randomized_p_gains / self.p_gains - 1) * self.obs_scales.pd_gains ,self.privileged_obs_buf), dim=-1)
-                self.privileged_obs_buf = torch.cat(((self.randomized_d_gains / self.d_gains - 1) * self.obs_scales.pd_gains, self.privileged_obs_buf),
-                                                    dim=-1)
+                if (self.cfg.domain_rand.randomize_com_pos):
+                    self.privileged_obs_buf = torch.cat((self.randomized_com_pos * self.obs_scales.com_pos ,self.privileged_obs_buf), dim=-1)
 
-            contact_force = self.sensor_forces.flatten(1) * self.obs_scales.contact_force
-            self.privileged_obs_buf = torch.cat((contact_force, self.privileged_obs_buf), dim=-1)
-            contact_flag = torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1
-            self.privileged_obs_buf = torch.cat((contact_flag, self.privileged_obs_buf), dim=-1)
+                if (self.cfg.domain_rand.randomize_gains):
+                    self.privileged_obs_buf = torch.cat(((self.randomized_p_gains / self.p_gains - 1) * self.obs_scales.pd_gains ,self.privileged_obs_buf), dim=-1)
+                    self.privileged_obs_buf = torch.cat(((self.randomized_d_gains / self.d_gains - 1) * self.obs_scales.pd_gains, self.privileged_obs_buf),
+                                                        dim=-1)
 
-        # add noise if needed
-        if self.add_noise:
-            self.privileged_obs_buf += (2 * torch.rand_like(self.privileged_obs_buf) - 1) * self.noise_scale_vec
+                contact_force = self.sensor_forces.flatten(1) * self.obs_scales.contact_force
+                self.privileged_obs_buf = torch.cat((contact_force, self.privileged_obs_buf), dim=-1)
+                contact_flag = torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1
+                self.privileged_obs_buf = torch.cat((contact_flag, self.privileged_obs_buf), dim=-1)
 
+            # add noise if needed
+            if self.add_noise:
+                self.privileged_obs_buf += (2 * torch.rand_like(self.privileged_obs_buf) - 1) * self.noise_scale_vec
 
-        # Remove velocity observations from policy observation.
-        if self.num_obs == self.num_privileged_obs - 6:
-            self.obs_buf = self.privileged_obs_buf[:, 6:]
-        elif self.num_obs == self.num_privileged_obs - 3:
-            self.obs_buf = self.privileged_obs_buf[:, 3:]
+            # Remove velocity observations from policy observation.
+            if self.num_obs == self.num_privileged_obs - 6:
+                self.obs_buf = self.privileged_obs_buf[:, 6:]
+            elif self.num_obs == self.num_privileged_obs - 3:
+                self.obs_buf = self.privileged_obs_buf[:, 3:]
+            else:
+                self.obs_buf = torch.clone(self.privileged_obs_buf)
         else:
-            self.obs_buf = torch.clone(self.privileged_obs_buf)
+            # Symmetric training: both actor and critic use same obs (without base_lin_vel)
+            # privileged_obs_buf stays None
+            self.obs_buf = obs_with_vel[:, 3:]
+            if self.add_noise:
+                self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
 
     def get_amp_observations(self):
         joint_pos = self.dof_pos
@@ -877,7 +887,9 @@ class LeggedRobot(BaseTask):
             [torch.Tensor]: Vector of scales used to multiply a uniform distribution in [-1, 1]
         """
         noise_start_dim = self.privileged_dim - 3 # last 3-dim is the linear vel
-        noise_vec = torch.zeros_like(self.privileged_obs_buf[0])
+        # Use obs_buf if privileged_obs_buf is None (symmetric training)
+        obs_buf_to_use = self.privileged_obs_buf if self.privileged_obs_buf is not None else self.obs_buf
+        noise_vec = torch.zeros_like(obs_buf_to_use[0])
         self.add_noise = self.cfg.noise.add_noise
         noise_scales = self.cfg.noise.noise_scales
         noise_level = self.cfg.noise.noise_level
