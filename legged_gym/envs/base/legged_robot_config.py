@@ -284,7 +284,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         gamma = 0.99
         lam = 0.95
         desired_kl = 0.01
-        max_grad_norm = 1.
+        max_grad_norm = 1.0
 
     class runner:
         policy_class_name = 'ActorCritic'

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
-#
+# 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
 #
@@ -35,8 +35,8 @@ import torch.optim as optim
 from rsl_rl.modules import ActorCritic
 from rsl_rl.storage import RolloutStorage
 
-class PPO:
-    """Standard PPO algorithm without world model support"""
+class PPOWMP:
+    """PPO algorithm with world model support"""
     actor_critic: ActorCritic
     def __init__(self,
                  actor_critic,
@@ -79,33 +79,37 @@ class PPO:
         self.max_grad_norm = max_grad_norm
         self.use_clipped_value_loss = use_clipped_value_loss
 
-    def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape):
-        """Initialize storage without history or world model features"""
-        self.storage = RolloutStorage(num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape,
-                                      action_shape, history_dim=0, wm_feature_dim=0, device=self.device)
+    def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape, history_dim, wm_feature_dim):
+        self.storage = RolloutStorage(num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape, history_dim=history_dim,
+                                      wm_feature_dim = wm_feature_dim, device = self.device)
 
     def test_mode(self):
         self.actor_critic.test()
-
+    
     def train_mode(self):
         self.actor_critic.train()
 
-    def act(self, obs, critic_obs):
-        """Simple act without world model features"""
+    def act(self, obs, critic_obs, history=None, wm_feature=None):
         if self.actor_critic.is_recurrent:
             self.transition.hidden_states = self.actor_critic.get_hidden_states()
-
-        self.transition.actions = self.actor_critic.act(obs).detach()
-        self.transition.values = self.actor_critic.evaluate(critic_obs).detach()
+        # Compute the actions and values
+        if history is not None and wm_feature is not None:
+            self.transition.history = history
+            self.transition.wm_feature = wm_feature.detach()
+            aug_obs, aug_critic_obs = obs.detach(), critic_obs.detach()
+            self.transition.actions = self.actor_critic.act(aug_obs, history, wm_feature).detach()
+            self.transition.values = self.actor_critic.evaluate(aug_critic_obs, wm_feature).detach()
+        else:
+            self.transition.actions = self.actor_critic.act(obs).detach()
+            self.transition.values = self.actor_critic.evaluate(critic_obs).detach()
         self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions).detach()
         self.transition.action_mean = self.actor_critic.action_mean.detach()
         self.transition.action_sigma = self.actor_critic.action_std.detach()
-
         # need to record obs and critic_obs before env.step()
         self.transition.observations = obs
         self.transition.critic_observations = critic_obs
         return self.transition.actions
-
+    
     def process_env_step(self, rewards, dones, infos):
         self.transition.rewards = rewards.clone()
         self.transition.dones = dones
@@ -117,10 +121,13 @@ class PPO:
         self.storage.add_transitions(self.transition)
         self.transition.clear()
         self.actor_critic.reset(dones)
-
-    def compute_returns(self, last_critic_obs):
-        """Simple compute returns without world model features"""
-        last_values = self.actor_critic.evaluate(last_critic_obs).detach()
+    
+    def compute_returns(self, last_critic_obs, wm_feature=None):
+        if wm_feature is not None:
+            aug_last_critic_obs = last_critic_obs.detach()
+            last_values = self.actor_critic.evaluate(aug_last_critic_obs, wm_feature).detach()
+        else:
+            last_values = self.actor_critic.evaluate(last_critic_obs).detach()
         self.storage.compute_returns(last_values, self.gamma, self.lam)
 
     def update(self):
@@ -130,13 +137,23 @@ class PPO:
             generator = self.storage.reccurent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
         else:
             generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+        for sample in generator:
+            # Handle both standard PPO format and WMP format with history/wm_feature
+            if len(sample) == 13:  # WMP format with history and wm_feature
+                obs_batch, critic_obs_batch, actions_batch, history_batch, wm_feature_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
+                old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch = sample
+                aug_obs_batch = obs_batch.detach()
+                self.actor_critic.act(aug_obs_batch, history_batch, wm_feature_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
+                actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
+                aug_critic_obs_batch = critic_obs_batch.detach()
+                value_batch = self.actor_critic.evaluate(aug_critic_obs_batch, wm_feature_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
+            else:  # Standard PPO format
+                obs_batch, critic_obs_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
+                old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch = sample
+                self.actor_critic.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
+                actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
+                value_batch = self.actor_critic.evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
 
-        for obs_batch, critic_obs_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
-            old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch in generator:
-
-            self.actor_critic.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
-            actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
-            value_batch = self.actor_critic.evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])
             mu_batch = self.actor_critic.action_mean
             sigma_batch = self.actor_critic.action_std
             entropy_batch = self.actor_critic.entropy
@@ -155,6 +172,7 @@ class PPO:
 
                     for param_group in self.optimizer.param_groups:
                         param_group['lr'] = self.learning_rate
+
 
             # Surrogate loss
             ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
@@ -189,4 +207,4 @@ class PPO:
         mean_surrogate_loss /= num_updates
         self.storage.clear()
 
-        return mean_value_loss, mean_surrogate_loss
+        return mean_value_loss, mean_surrogate_loss, 0.0  # third value is vel_predict_loss (not used without vel_predict_coef)

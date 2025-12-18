@@ -1,15 +1,13 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 from legged_gym.envs.go2.go2_base import GO2BaseCfg
 
-class GO2BlindCfg(GO2BaseCfg):
+class GO2BaselineBlindCfg(GO2BaseCfg):
     class env(LeggedRobotCfg.env):
         num_envs = 4096
         include_history_steps = None  # Number of steps of history to include.
         prop_dim = 33 # proprioception
         action_dim = 12
         privileged_dim = 0  # privileged_obs[:,:privileged_dim] is the privileged information in privileged_obs, include 3-dim base linear vel
-        height_dim = 0  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs
-        forward_height_dim = 0 # for depth image prediction
         num_observations = prop_dim + action_dim
         num_privileged_obs = None  # Set to None for symmetric training (no privileged observations)
         privileged_obs = False  # Disable extra privileged observations (domain randomization params)
@@ -39,38 +37,21 @@ class GO2BlindCfg(GO2BaseCfg):
         scale = 1
         invert = True
 
-class GO2BlindCfgPPO( LeggedRobotCfgPPO ):
-    runner_class_name = 'WMPRunner'
+class GO2BaselineBlindCfgPPO( LeggedRobotCfgPPO ):
+    runner_class_name = 'OnPolicyRunner'
 
     class policy:
         init_noise_std = 1.0
         encoder_hidden_dims = [256, 128]
-        wm_encoder_hidden_dims = [64, 64]
         actor_hidden_dims = [256, 128, 64]
         critic_hidden_dims = [512, 256, 128]
-        latent_dim = 32 + 3
-        wm_latent_dim = 32
         activation = 'elu'  # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
-
-    class algorithm( LeggedRobotCfgPPO.algorithm ):
-        entropy_coef = 0.01
-        # vel_predict_coef = 1.0
-        num_learning_epochs = 5
-        num_mini_batches = 4
 
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        experiment_name = 'go2_blind'
-        algorithm_class_name = 'PPOWMP'
+        experiment_name = 'go2_baseline_blind'
+        algorithm_class_name = 'PPO'
         policy_class_name = 'ActorCritic'
         max_iterations = 20000  # number of policy updates
         save_interval = 1000
         use_wandb = True
-
-    class depth_predictor:
-        lr = 3e-4
-        weight_decay = 1e-4
-        training_interval = 10
-        training_iters = 1000
-        batch_size = 1024
-        loss_scale = 100

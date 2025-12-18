@@ -41,7 +41,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 import wandb
 
-from rsl_rl.algorithms import PPO
+from rsl_rl.algorithms import PPOWMP
 from rsl_rl.modules import ActorCritic, ActorCriticWMP, ActorCriticRecurrent
 from rsl_rl.env import VecEnv
 from rsl_rl.utils.utils import Normalizer
@@ -103,8 +103,8 @@ class WMPRunner:
                                           wm_feature_dim=self.wm_feature_dim,
                                           **self.policy_cfg).to(self.device)
 
-        alg_class = eval(self.cfg["algorithm_class_name"])  # PPO
-        self.alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg)
+        alg_class = eval(self.cfg["algorithm_class_name"])  # PPOWMP
+        self.alg: PPOWMP = alg_class(actor_critic, device=self.device, **self.alg_cfg)
         self.num_steps_per_env = self.cfg["num_steps_per_env"]
         self.save_interval = self.cfg["save_interval"]
 

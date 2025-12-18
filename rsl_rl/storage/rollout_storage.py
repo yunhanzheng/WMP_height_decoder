@@ -64,6 +64,8 @@ class RolloutStorage:
         self.obs_shape = obs_shape
         self.privileged_obs_shape = privileged_obs_shape
         self.actions_shape = actions_shape
+        self.history_dim = history_dim
+        self.wm_feature_dim = wm_feature_dim
 
         # Core
         self.observations = torch.zeros(num_transitions_per_env, num_envs, *obs_shape, device=self.device)
@@ -103,8 +105,10 @@ class RolloutStorage:
         if self.privileged_observations is not None: self.privileged_observations[self.step].copy_(transition.critic_observations)
         self.actions[self.step].copy_(transition.actions)
 
-        self.history[self.step].copy_(transition.history)
-        self.wm_features[self.step].copy_(transition.wm_feature)
+        if transition.history is not None:
+            self.history[self.step].copy_(transition.history)
+        if transition.wm_feature is not None:
+            self.wm_features[self.step].copy_(transition.wm_feature)
 
         self.rewards[self.step].copy_(transition.rewards.view(-1, 1))
         self.dones[self.step].copy_(transition.dones.view(-1, 1))
@@ -178,8 +182,11 @@ class RolloutStorage:
         old_mu = self.mu.flatten(0, 1)
         old_sigma = self.sigma.flatten(0, 1)
 
-        history = self.history.flatten(0, 1)
-        wm_feature = self.wm_features.flatten(0, 1)
+        # Only include history and wm_feature if they're being used
+        use_wmp = self.history_dim > 0 or self.wm_feature_dim > 0
+        if use_wmp:
+            history = self.history.flatten(0, 1)
+            wm_feature = self.wm_features.flatten(0, 1)
 
         for epoch in range(num_epochs):
             for i in range(num_mini_batches):
@@ -198,11 +205,14 @@ class RolloutStorage:
                 old_mu_batch = old_mu[batch_idx]
                 old_sigma_batch = old_sigma[batch_idx]
 
-                history_batch = history[batch_idx]
-                wm_feature_batch = wm_feature[batch_idx]
-
-                yield obs_batch, critic_observations_batch, actions_batch, history_batch, wm_feature_batch, target_values_batch, advantages_batch, returns_batch, \
-                       old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
+                if use_wmp:
+                    history_batch = history[batch_idx]
+                    wm_feature_batch = wm_feature[batch_idx]
+                    yield obs_batch, critic_observations_batch, actions_batch, history_batch, wm_feature_batch, target_values_batch, advantages_batch, returns_batch, \
+                           old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
+                else:
+                    yield obs_batch, critic_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, \
+                           old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (None, None), None
 
     # for RNNs only
     def reccurent_mini_batch_generator(self, num_mini_batches, num_epochs=8):
