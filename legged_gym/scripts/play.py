@@ -56,7 +56,8 @@ def play(args):
     env_cfg.terrain.num_rows = 5
     env_cfg.terrain.num_cols = 1
     env_cfg.terrain.curriculum = False
-    env_cfg.terrain.difficulty = 1.0  # use 0.15 for stripe obstacle
+    env_cfg.terrain.difficulty = 0.15  # use 0.15 for stripe obstacle
+    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
     env_cfg.noise.add_noise = False
 
@@ -70,9 +71,9 @@ def play(args):
     env_cfg.domain_rand.randomize_action_latency = False
     env_cfg.domain_rand.push_robots = False
     env_cfg.domain_rand.randomize_gains = True
-    # env_cfg.domain_rand.randomize_base_mass = False
+    env_cfg.domain_rand.randomize_base_mass = False
     env_cfg.domain_rand.randomize_link_mass = False
-    # env_cfg.domain_rand.randomize_com_pos = False
+    env_cfg.domain_rand.randomize_com_pos = False
     env_cfg.domain_rand.randomize_motor_strength = False
 
     train_cfg.runner.amp_num_preload_transitions = 1
@@ -80,7 +81,7 @@ def play(args):
     env_cfg.domain_rand.stiffness_multiplier_range = [1.0, 1.0]
     env_cfg.domain_rand.damping_multiplier_range = [1.0, 1.0]
 
-    env_cfg.commands.ranges.lin_vel_x = [1.0, 1.0]
+    env_cfg.commands.ranges.lin_vel_x = [0.8, 0.8]
     env_cfg.commands.ranges.lin_vel_y = [0.0, 0.0]
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
     env_cfg.commands.ranges.heading = [0.0, 0.0]
