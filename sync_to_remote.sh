@@ -24,6 +24,7 @@ rsync -avz --progress \
     --exclude '.ipynb_checkpoints' \
     --exclude 'build' \
     --exclude 'dist' \
+    --exclude '*.mkv' \
     "${LOCAL_PATH}/" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}"
 
 echo "Sync complete!"
