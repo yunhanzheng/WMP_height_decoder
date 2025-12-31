@@ -101,6 +101,7 @@ class LeggedRobot(BaseTask):
         self.crawl_end_idx = math.ceil(self.cfg.env.num_envs * sum(self.cfg.terrain.terrain_proportions[:9]))
         self.roughflat_start_idx = self.crawl_end_idx
         self.roughflat_end_idx = self.cfg.env.num_envs
+        self.num_calls = 0
 
         self.sim_params = sim_params
         self.height_samples = None
@@ -284,6 +285,7 @@ class LeggedRobot(BaseTask):
 
         # compute observations, rewards, resets, ...
         self.check_termination()
+        self._update_feet_air_time()  # Track feet air time before computing rewards
         self.compute_reward()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         terminal_amp_states = self.get_amp_observations()[env_ids]
@@ -377,6 +379,8 @@ class LeggedRobot(BaseTask):
         self.last_dof_vel[env_ids] = 0.
         self.last_torques[env_ids] = 0.
         self.feet_air_time[env_ids] = 0.
+        self.feet_air_time_at_contact[env_ids] = 0.
+        self.first_contact[env_ids] = False
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
         # fill extras
@@ -962,6 +966,8 @@ class LeggedRobot(BaseTask):
         self.commands_scale = torch.tensor([self.obs_scales.lin_vel, self.obs_scales.lin_vel, self.obs_scales.ang_vel], device=self.device, requires_grad=False,) # TODO change this
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
+        self.first_contact = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
+        self.feet_air_time_at_contact = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
@@ -1485,11 +1491,17 @@ class LeggedRobot(BaseTask):
         # Terminal reward / penalty
         return self.reset_buf * ~self.time_out_buf
 
+    # def _reward_dof_pos_limits(self):
+    #     # Penalize dof positions too close to the limit
+    #     out_of_limits = -(self.dof_pos - self.dof_pos_limits[:, 0]).clip(max=0.0)  # lower limit
+    #     out_of_limits += (self.dof_pos - self.dof_pos_limits[:, 1]).clip(min=0.0)
+    #     return torch.sum(out_of_limits, dim=1)
     def _reward_dof_pos_limits(self):
-        # Penalize dof positions too close to the limit
-        out_of_limits = -(self.dof_pos - self.dof_pos_limits[:, 0]).clip(max=0.0)  # lower limit
-        out_of_limits += (self.dof_pos - self.dof_pos_limits[:, 1]).clip(min=0.0)
-        return torch.sum(out_of_limits, dim=1)
+        # Penalize getting within 0.1 radians of the limit
+        limit_buffer = 0.1 
+        out_of_limits = -(self.dof_pos - (self.dof_pos_limits[:, 0] + limit_buffer)).clip(max=0.0)
+        out_of_limits += (self.dof_pos - (self.dof_pos_limits[:, 1] - limit_buffer)).clip(min=0.0)
+        return torch.sum(torch.square(out_of_limits), dim=1)
 
     def _reward_dof_vel_limits(self):
         # Penalize dof velocities too close to the limit
@@ -1520,20 +1532,32 @@ class LeggedRobot(BaseTask):
         ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
         return torch.exp(-ang_vel_error / self.cfg.rewards.tracking_sigma)
 
-    def _reward_feet_air_time(self):
-        # Reward long steps
-        # Need to filter the contacts because the contact reporting of PhysX is unreliable on meshes
+    def _update_feet_air_time(self):
+        """ Update feet air time tracking (called every step, independent of reward scales) """
         contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
         contact_filt = torch.logical_or(contact, self.last_contacts)
         self.last_contacts = contact
-        first_contact = (self.feet_air_time > 0.0) * contact_filt
+        # Detect first contact (foot was in air and now has contact)
+        self.first_contact = (self.feet_air_time > 0.0) * contact_filt
         self.feet_air_time += self.dt
+        # Store air time at contact for reward computation
+        self.feet_air_time_at_contact = self.feet_air_time * self.first_contact
+        self.feet_air_time *= ~contact_filt
+
+    def _reward_feet_air_time(self):
+        # Reward long steps (air time tracking is done in _update_feet_air_time)
         rew_airTime = torch.sum(
-            (self.feet_air_time - 0.5) * first_contact, dim=1
+            (self.feet_air_time_at_contact - 0.5) * self.first_contact, dim=1
         )  # reward only on first contact with the ground
         rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.1  # no reward for zero command
-        self.feet_air_time *= ~contact_filt
         return rew_airTime
+
+    def _reward_no_excessive_air_time(self):
+        # Penalize feet that are in the air for more than max_air_time to prevent tucking
+        max_air_time = 1.0
+        excessive_air_time = torch.clamp(self.feet_air_time - max_air_time, min=0.0)
+        penalty = torch.sum(excessive_air_time ** 2, dim=1)
+        return penalty
 
     def _reward_feet_obs_contact(self):
         raise RuntimeError("This code should not run!")

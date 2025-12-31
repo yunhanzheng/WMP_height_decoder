@@ -168,7 +168,7 @@ class WMPRunner:
         for key, value in sorted(defaults.items(), key=lambda x: x[0]):
             arg_type = tools.args_type(value)
             parser.add_argument(f"--{key}", type=arg_type, default=arg_type(value))
-        self.wm_config = parser.parse_args()
+        self.wm_config, _ = parser.parse_known_args()
         # allow world model and rl env on different device
         if (self.wm_config.wm_device != 'None'):
             self.wm_config.device = self.wm_config.wm_device
@@ -518,6 +518,20 @@ class WMPRunner:
             if len(locs["rewbuffer"]) > 0:
                 wandb_log["Train/mean_reward"] = statistics.mean(locs["rewbuffer"])
                 wandb_log["Train/mean_episode_length"] = statistics.mean(locs["lenbuffer"])
+
+            # Log individual reward components
+            if locs['ep_infos']:
+                for key in locs['ep_infos'][0]:
+                    infotensor = torch.tensor([], device=self.device)
+                    for ep_info in locs['ep_infos']:
+                        if not isinstance(ep_info[key], torch.Tensor):
+                            ep_info[key] = torch.Tensor([ep_info[key]])
+                        if len(ep_info[key].shape) == 0:
+                            ep_info[key] = ep_info[key].unsqueeze(0)
+                        infotensor = torch.cat((infotensor, ep_info[key].to(self.device)))
+                    value = torch.mean(infotensor)
+                    wandb_log[f'Episode/{key}'] = value.item()
+
             wandb.log(wandb_log, step=locs["it"])
 
         str = f" \033[1m Learning iteration {locs['it']}/{self.current_learning_iteration + locs['num_learning_iterations']} \033[0m "

@@ -56,12 +56,15 @@ def play(args):
     env_cfg.terrain.num_rows = 5
     env_cfg.terrain.num_cols = 1
     env_cfg.terrain.curriculum = False
-    env_cfg.terrain.difficulty = 0.15  # use 0.15 for stripe obstacle
+    env_cfg.terrain.difficulty = 0.1  # use 0.15 for stripe obstacle
     env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+
+    # env_cfg.terrain.difficulty = 1.0  # use 0.15 for stripe obstacle
+    # env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 
     env_cfg.noise.add_noise = False
 
-    env_cfg.domain_rand.friction_range = [1.0, 1.0]
+    env_cfg.domain_rand.friction_range = [0.8, 0.8]
     env_cfg.domain_rand.restitution_range = [0.0, 0.0]
     env_cfg.domain_rand.added_mass_range = [0., 0.]  # kg
     env_cfg.domain_rand.com_x_pos_range = [-0.0, 0.0]
@@ -96,7 +99,7 @@ def play(args):
 
 
     train_cfg.runner.checkpoint = -1
-    ppo_runner, train_cfg = task_registry.make_wmp_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
+    ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
     policy = ppo_runner.get_inference_policy(device=env.device)
     
     # export policy as a jit module (used to run it from C++)
@@ -115,49 +118,61 @@ def play(args):
     camera_direction = np.array(env_cfg.viewer.lookat) - np.array(env_cfg.viewer.pos)
     img_idx = 0
 
-    history_length = 5
-    trajectory_history = torch.zeros(size=(env.num_envs, history_length, env.num_obs -
-                                            env.privileged_dim - env.height_dim - 3), device = env.device)
-    # Handle the case when height_dim = 0 (avoid using -0 in slice which becomes 0)
-    if env.height_dim > 0:
-        obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
-                                            obs[:, env.privileged_dim + 9:-env.height_dim]), dim=1)
+    # Initialize world model components only if using WMPRunner
+    use_world_model = hasattr(ppo_runner, '_world_model')
+
+    if use_world_model:
+        # Initialize trajectory history
+        history_length = 5
+        trajectory_history = torch.zeros(size=(env.num_envs, history_length, env.num_obs -
+                                                env.privileged_dim - env.height_dim - 3), device = env.device)
+        # Handle the case when height_dim = 0 (avoid using -0 in slice which becomes 0)
+        if env.height_dim > 0:
+            obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
+                                                obs[:, env.privileged_dim + 9:-env.height_dim]), dim=1)
+        else:
+            obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
+                                                obs[:, env.privileged_dim + 9:]), dim=1)
+        trajectory_history = torch.concat((trajectory_history[:, 1:], obs_without_command.unsqueeze(1)), dim=1)
+
+        # Initialize world model
+        world_model = ppo_runner._world_model.to(env.device)
+        wm_latent = wm_action = None
+        wm_is_first = torch.ones(env.num_envs, device=env.device)
+        wm_update_interval = env.cfg.depth.update_interval
+        wm_action_history = torch.zeros(size=(env.num_envs, wm_update_interval, env.num_actions),
+                                        device=env.device)
+        wm_obs = {
+            "prop": obs[:, env.privileged_dim: env.privileged_dim + env.cfg.env.prop_dim],
+            "is_first": wm_is_first,
+        }
+
+        if (env.cfg.depth.use_camera):
+            wm_obs["image"] = torch.zeros(((env.num_envs,) + env.cfg.depth.resized + (1,)),
+                                          device=world_model.device)
+
+        wm_feature = torch.zeros((env.num_envs, ppo_runner.wm_feature_dim), device=env.device)
     else:
-        obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
-                                            obs[:, env.privileged_dim + 9:]), dim=1)
-    trajectory_history = torch.concat((trajectory_history[:, 1:], obs_without_command.unsqueeze(1)), dim=1)
-
-    world_model = ppo_runner._world_model.to(env.device)
-    wm_latent = wm_action = None
-    wm_is_first = torch.ones(env.num_envs, device=env.device)
-    wm_update_interval = env.cfg.depth.update_interval
-    wm_action_history = torch.zeros(size=(env.num_envs, wm_update_interval, env.num_actions),
-                                    device=env.device)
-    wm_obs = {
-        "prop": obs[:, env.privileged_dim: env.privileged_dim + env.cfg.env.prop_dim],
-        "is_first": wm_is_first,
-    }
-
-    if (env.cfg.depth.use_camera):
-        wm_obs["image"] = torch.zeros(((env.num_envs,) + env.cfg.depth.resized + (1,)),
-                                      device=world_model.device)
-
-    wm_feature = torch.zeros((env.num_envs, ppo_runner.wm_feature_dim), device=env.device)
+        wm_feature = None
 
     total_reward = 0
     not_dones = torch.ones((env.num_envs,), device=env.device)
     for i in range(1*int(env.max_episode_length) + 3):
-        if (env.global_counter % wm_update_interval == 0):
-            if (env.cfg.depth.use_camera):
-                wm_obs["image"][env.depth_index] = infos["depth"].unsqueeze(-1).to(world_model.device)
+        if use_world_model:
+            if (env.global_counter % wm_update_interval == 0):
+                if (env.cfg.depth.use_camera):
+                    wm_obs["image"][env.depth_index] = infos["depth"].unsqueeze(-1).to(world_model.device)
 
-            wm_embed = world_model.encoder(wm_obs)
-            wm_latent, _ = world_model.dynamics.obs_step(wm_latent, wm_action, wm_embed, wm_obs["is_first"], sample=True)
-            wm_feature = world_model.dynamics.get_deter_feat(wm_latent)
-            wm_is_first[:] = 0
+                wm_embed = world_model.encoder(wm_obs)
+                wm_latent, _ = world_model.dynamics.obs_step(wm_latent, wm_action, wm_embed, wm_obs["is_first"], sample=True)
+                wm_feature = world_model.dynamics.get_deter_feat(wm_latent)
+                wm_is_first[:] = 0
 
-        history = trajectory_history.flatten(1).to(env.device)
-        actions = policy(obs.detach(), history.detach(), wm_feature.detach())
+        if use_world_model:
+            history = trajectory_history.flatten(1).to(env.device)
+            actions = policy(obs.detach(), history.detach(), wm_feature.detach())
+        else:
+            actions = policy(obs.detach())
 
 
         obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
@@ -166,38 +181,39 @@ def play(args):
         total_reward += torch.mean(rews * not_dones)
 
         # update world model input
-        wm_action_history = torch.concat(
-            (wm_action_history[:, 1:], actions.unsqueeze(1)), dim=1)
-        wm_obs = {
-            "prop": obs[:, env.privileged_dim: env.privileged_dim + env.cfg.env.prop_dim],
-            "is_first": wm_is_first,
-        }
-        if (env.cfg.depth.use_camera):
-            wm_obs["image"] = torch.zeros(((env.num_envs,) + env.cfg.depth.resized + (1,)),
-                                          device=world_model.device)
+        if use_world_model:
+            wm_action_history = torch.concat(
+                (wm_action_history[:, 1:], actions.unsqueeze(1)), dim=1)
+            wm_obs = {
+                "prop": obs[:, env.privileged_dim: env.privileged_dim + env.cfg.env.prop_dim],
+                "is_first": wm_is_first,
+            }
+            if (env.cfg.depth.use_camera):
+                wm_obs["image"] = torch.zeros(((env.num_envs,) + env.cfg.depth.resized + (1,)),
+                                              device=world_model.device)
 
-        reset_env_ids = reset_env_ids.cpu().numpy()
-        if (len(reset_env_ids) > 0):
-            wm_action_history[reset_env_ids, :] = 0
-            wm_is_first[reset_env_ids] = 1
+            reset_env_ids = reset_env_ids.cpu().numpy()
+            if (len(reset_env_ids) > 0):
+                wm_action_history[reset_env_ids, :] = 0
+                wm_is_first[reset_env_ids] = 1
 
-        wm_action = wm_action_history.flatten(1)
-
+            wm_action = wm_action_history.flatten(1)
 
         # process trajectory history
-        env_ids = dones.nonzero(as_tuple=False).flatten()
-        trajectory_history[env_ids] = 0
-        # Handle the case when height_dim = 0 (avoid using -0 in slice which becomes 0)
-        if env.height_dim > 0:
-            obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
-                                                obs[:, env.privileged_dim + 9:-env.height_dim]),
-                                               dim=1)
-        else:
-            obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
-                                                obs[:, env.privileged_dim + 9:]),
-                                               dim=1)
-        trajectory_history = torch.concat(
-            (trajectory_history[:, 1:], obs_without_command.unsqueeze(1)), dim=1)
+        if use_world_model:
+            env_ids = dones.nonzero(as_tuple=False).flatten()
+            trajectory_history[env_ids] = 0
+            # Handle the case when height_dim = 0 (avoid using -0 in slice which becomes 0)
+            if env.height_dim > 0:
+                obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
+                                                    obs[:, env.privileged_dim + 9:-env.height_dim]),
+                                                   dim=1)
+            else:
+                obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
+                                                    obs[:, env.privileged_dim + 9:]),
+                                                   dim=1)
+            trajectory_history = torch.concat(
+                (trajectory_history[:, 1:], obs_without_command.unsqueeze(1)), dim=1)
 
         if RECORD_FRAMES:
             if i % 2:

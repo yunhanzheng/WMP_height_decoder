@@ -417,8 +417,10 @@ class Terrain:
         num_blocks = int(area * BLOCKS_PER_AREA)
         # A block is an x, y, s1, s2, and h
         blocks = []
-        np.random.seed(int(os.environ["ISAAC_SEED"]))
-        print(f"Generating {num_blocks} obstacles..")
+        # Use fixed seed of 1 for consistent terrain generation across all runs
+        terrain_seed = int(os.environ.get("ISAAC_SEED", "1"))
+        np.random.seed(terrain_seed)
+        print(f"Generating {num_blocks} obstacles with seed {terrain_seed}..")
         for _ in tqdm.trange(num_blocks):
             success = False
             while not success:

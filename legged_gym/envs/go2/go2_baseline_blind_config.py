@@ -55,3 +55,5 @@ class GO2BaselineBlindCfgPPO( LeggedRobotCfgPPO ):
         max_iterations = 20000  # number of policy updates
         save_interval = 1000
         use_wandb = True
+        resume = False  # Changed to False to start training from scratch
+        # resume_path = "logs/go2_baseline_blind/Dec21_14-38-22_/model_6000.pt"
