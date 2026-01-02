@@ -137,6 +137,7 @@ def evaluate(args):
         'lin_vel_mse': torch.zeros((env.num_envs,), device=env.device),
         'ang_vel_mse': torch.zeros((env.num_envs,), device=env.device),
         'collision': torch.zeros((env.num_envs,), device=env.device),
+        'termination': torch.zeros((env.num_envs,), device=env.device),
         'feet_stumble': torch.zeros((env.num_envs,), device=env.device),
         'total_reward': torch.zeros((env.num_envs,), device=env.device),
     }
@@ -181,10 +182,21 @@ def evaluate(args):
         # Total reward accumulation
         metrics['total_reward'] += rews * active_mask.float()
 
-        # Collision (penalised contact with base/thighs)
-        if hasattr(env, 'penalised_contact_buf'):
-            collision = torch.sum(env.penalised_contact_buf, dim=1)
+        # Collision (penalised contact with parts in penalize_contacts_on: thigh, calf)
+        if hasattr(env, 'penalised_contact_indices'):
+            collision = torch.sum(
+                1.0 * (torch.norm(env.contact_forces[:, env.penalised_contact_indices, :], dim=-1) > 0.1),
+                dim=1
+            )
             metrics['collision'] += collision * active_mask.float()
+
+        # Termination contacts (contacts with parts in terminate_after_contacts_on: base)
+        if hasattr(env, 'termination_contact_indices'):
+            termination = torch.sum(
+                1.0 * (torch.norm(env.contact_forces[:, env.termination_contact_indices, :], dim=-1) > 1.0),
+                dim=1
+            )
+            metrics['termination'] += termination * active_mask.float()
 
         # Feet stumble
         if hasattr(env, 'contact_forces'):
@@ -291,12 +303,13 @@ def evaluate(args):
             }
 
     # Print in fixed order
-    metric_order = ['total_reward', 'lin_vel_mse', 'ang_vel_mse', 'collision', 'feet_stumble']
+    metric_order = ['total_reward', 'lin_vel_mse', 'ang_vel_mse', 'collision', 'termination', 'feet_stumble']
     metric_names = {
         'total_reward': 'Total reward',
         'lin_vel_mse': 'Lin vel MSE (m²/s²)',
         'ang_vel_mse': 'Ang vel MSE (rad²/s²)',
         'collision': 'Collision count',
+        'termination': 'Termination contact count',
         'feet_stumble': 'Feet stumble count',
     }
 
@@ -356,9 +369,9 @@ if __name__ == '__main__':
     # ============================================
     # EVALUATION CONFIGURATION (Edit these values)
     # ============================================
-    NUM_ENVS = 10          # Number of parallel environments
+    NUM_ENVS = 100          # Number of parallel environments
     DIFFICULTY = 0.1       # Terrain difficulty (0.0 - 1.0)
-    VEL_X = 0.5           # Forward velocity command (m/s)
+    VEL_X = 0.8           # Forward velocity command (m/s)
     VEL_Y = 0.0           # Lateral velocity command (m/s)
     VEL_YAW = 0.0         # Yaw velocity command (rad/s)
     RANDOMIZE = False     # Enable domain randomization
