@@ -93,7 +93,7 @@ class WMPRunner:
         self.depth_predictor_opt = optim.Adam(self.depth_predictor.parameters(), lr=self.depth_predictor_cfg["lr"],
                                               weight_decay=self.depth_predictor_cfg["weight_decay"])
 
-        self.history_dim = history_length * (self.env.num_obs - self.env.privileged_dim - self.env.height_dim-3) #exclude command
+        self.history_dim = history_length * (self.env.num_obs - self.env.privileged_dim - self.env.height_dim - 3)
         actor_critic = ActorCriticWMP(num_actor_obs=num_actor_obs,
                                           num_critic_obs=num_critic_obs,
                                           num_actions=self.env.num_actions,
@@ -209,7 +209,7 @@ class WMPRunner:
                                                     self.env.privileged_dim - self.env.height_dim - 3),
                                               device=self.device)
         obs_without_command = torch.concat((obs[:, self.env.privileged_dim:self.env.privileged_dim + 6],
-                                            obs[:, self.env.privileged_dim + 9:self.env.num_obs - self.env.height_dim]), dim=1)
+                                            obs[:, self.env.privileged_dim + 9:-self.env.height_dim]), dim=1)
         self.trajectory_history = torch.concat((self.trajectory_history[:, 1:], obs_without_command.unsqueeze(1)),
                                                dim=1)
 

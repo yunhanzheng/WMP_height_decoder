@@ -59,11 +59,15 @@ class OnPolicyRunner:
         self.device = device
         self.env = env
         if self.env.num_privileged_obs is not None:
-            num_critic_obs = self.env.num_privileged_obs 
+            num_critic_obs = self.env.num_privileged_obs
         else:
             num_critic_obs = self.env.num_obs
+
+        # Actor gets only proprioception + actions
+        num_actor_obs = self.env.cfg.env.prop_dim + self.env.cfg.env.action_dim
+
         actor_critic_class = eval(self.cfg["policy_class_name"]) # ActorCritic
-        actor_critic: ActorCritic = actor_critic_class( self.env.num_obs,
+        actor_critic: ActorCritic = actor_critic_class( num_actor_obs,
                                                         num_critic_obs,
                                                         self.env.num_actions,
                                                         **self.policy_cfg).to(self.device)
@@ -73,7 +77,7 @@ class OnPolicyRunner:
         self.save_interval = self.cfg["save_interval"]
 
         # init storage and model
-        self.alg.init_storage(self.env.num_envs, self.num_steps_per_env, [self.env.num_obs], [self.env.num_privileged_obs], [self.env.num_actions])
+        self.alg.init_storage(self.env.num_envs, self.num_steps_per_env, [num_actor_obs], [self.env.num_privileged_obs], [self.env.num_actions])
 
         # Log
         self.log_dir = log_dir
@@ -103,7 +107,20 @@ class OnPolicyRunner:
             )
 
         _, _ = self.env.reset()
-    
+
+    def _get_actor_obs(self, obs):
+        """Extract proprioception + actions for actor (no lin_vel, no privileged info, no heights)"""
+        # Observation structure: [privileged_dim][obs_with_vel][height_dim]
+        # obs_with_vel = [lin_vel(3)][ang_vel(3)][gravity(3)][commands(3)][dof_pos(12)][dof_vel(12)][actions(12)]
+        # We want: [ang_vel(3)][gravity(3)][commands(3)][dof_pos(12)][dof_vel(12)][actions(12)]
+
+        # Skip first privileged_dim dimensions and first 3 dims of obs_with_vel (lin_vel)
+        start_idx = self.env.privileged_dim + 3
+        # Take next prop_dim + action_dim dimensions
+        end_idx = start_idx + self.env.cfg.env.prop_dim + self.env.cfg.env.action_dim
+
+        return obs[:, start_idx:end_idx]
+
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         # initialize writer
         if self.log_dir is not None and self.writer is None:
@@ -114,6 +131,10 @@ class OnPolicyRunner:
         privileged_obs = self.env.get_privileged_observations()
         critic_obs = privileged_obs if privileged_obs is not None else obs
         obs, critic_obs = obs.to(self.device), critic_obs.to(self.device)
+
+        # Extract proprioception + actions for actor
+        actor_obs = self._get_actor_obs(obs)
+
         self.alg.actor_critic.train() # switch to train mode (for dropout for example)
 
         ep_infos = []
@@ -128,10 +149,14 @@ class OnPolicyRunner:
             # Rollout
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
-                    actions = self.alg.act(obs, critic_obs)
+                    actions = self.alg.act(actor_obs, critic_obs)
                     obs, privileged_obs, rewards, dones, infos, _, _ = self.env.step(actions)
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs, rewards, dones = obs.to(self.device), critic_obs.to(self.device), rewards.to(self.device), dones.to(self.device)
+
+                    # Extract proprioception + actions for actor
+                    actor_obs = self._get_actor_obs(obs)
+
                     self.alg.process_env_step(rewards, dones, infos)
                     
                     if self.log_dir is not None:
