@@ -178,7 +178,7 @@ class LeggedRobot(BaseTask):
             self.gym.fetch_results(self.sim, True)
             self.gym.refresh_dof_state_tensor(self.sim)
 
-        reset_env_ids, terminal_amp_states = self.post_physics_step()
+        reset_env_ids = self.post_physics_step()
 
         # return clipped obs, clipped states (None), rewards, dones and infos
         clip_obs = self.cfg.normalization.clip_observations
@@ -199,7 +199,7 @@ class LeggedRobot(BaseTask):
         else:
             self.extras["depth"] = None
 
-        return policy_obs, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras, reset_env_ids, terminal_amp_states
+        return policy_obs, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras, reset_env_ids
 
 
     def normalize_depth_image(self, depth_image):
@@ -288,7 +288,6 @@ class LeggedRobot(BaseTask):
         self._update_feet_air_time()  # Track feet air time before computing rewards
         self.compute_reward()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
-        terminal_amp_states = self.get_amp_observations()[env_ids]
         self.reset_idx(env_ids)
 
         self.update_depth_buffer()
@@ -318,7 +317,7 @@ class LeggedRobot(BaseTask):
                 cv2.imshow("Depth Image", self.depth_buffer[self.lookat_id, -1].cpu().numpy() + 0.5)
                 cv2.waitKey(1)
 
-        return env_ids, terminal_amp_states
+        return env_ids
 
     def check_termination(self):
         """ Check if environments need to be reset
@@ -488,31 +487,6 @@ class LeggedRobot(BaseTask):
             self.obs_buf = obs_with_vel[:, 3:]
             if self.add_noise:
                 self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
-
-    def get_amp_observations(self):
-        joint_pos = self.dof_pos
-        # foot_pos = self.foot_positions_in_base_frame(self.dof_pos).to(self.device)
-        base_lin_vel = self.base_lin_vel
-        base_ang_vel = self.base_ang_vel
-        joint_vel = self.dof_vel
-        # z_pos = self.root_states[:, 2:3]
-        # if (self.cfg.terrain.measure_heights):
-        #     z_pos = z_pos - torch.mean(self.measured_heights, dim=-1, keepdim=True)
-        # return torch.cat((joint_pos, foot_pos, base_lin_vel, base_ang_vel, joint_vel, z_pos), dim=-1)
-        return torch.cat((joint_pos, base_lin_vel, base_ang_vel, joint_vel), dim=-1)
-
-    def get_full_amp_observations(self):
-        joint_pos = self.dof_pos
-        foot_pos = self.foot_positions_in_base_frame(self.dof_pos).to(self.device)
-        base_lin_vel = self.base_lin_vel
-        base_ang_vel = self.base_ang_vel
-        joint_vel = self.dof_vel
-        pos = self.root_states[:, :3]
-        if (self.cfg.terrain.measure_heights):
-            pos[:, 2:3] = pos[:, 2:3] - torch.mean(self.measured_heights, dim=-1, keepdim=True)
-        rot = self.root_states[:, 3:7]
-        foot_vel = torch.zeros_like(foot_pos)
-        return torch.cat((pos, rot, joint_pos, foot_pos, base_lin_vel, base_ang_vel, joint_vel, foot_vel), dim=-1)
 
     def create_sim(self):
         """ Creates simulation, terrain and evironments
