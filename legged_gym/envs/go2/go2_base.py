@@ -13,7 +13,7 @@ class GO2BaseCfg(LeggedRobotCfg):
         terrain_width = 15.0
         num_rows = 10  # number of terrain rows (levels)
         num_cols = 10  # number of terrain cols (types)
-        measure_heights = False
+        measure_heights = True
         max_init_terrain_level = 5  # starting curriculum state
 
         measured_points_x = [
