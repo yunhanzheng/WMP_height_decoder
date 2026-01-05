@@ -35,7 +35,7 @@ from .a1.a1_config import A1RoughCfg, A1RoughCfgPPO
 from .a1.a1_amp_config import A1AMPCfg, A1AMPCfgPPO
 from .go2.go2_blind_config import GO2BlindCfg, GO2BlindCfgPPO
 from .go2.go2_baseline_blind_config import GO2BaselineBlindCfg, GO2BaselineBlindCfgPPO
-from .go2.go2_him_blind import GO2HIMBlindCfg, GO2HIMBlindCfgPPO
+from .go2.go2_him_blind_config import GO2HIMBlindCfg, GO2HIMBlindCfgPPO
 
 
 import os
