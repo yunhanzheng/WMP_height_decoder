@@ -30,3 +30,4 @@
 
 from .ppo import PPO
 from .ppowmp import PPOWMP
+from .him_ppo import HIMPPO

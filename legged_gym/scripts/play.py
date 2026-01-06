@@ -64,19 +64,22 @@ def play(args):
 
     env_cfg.noise.add_noise = False
 
-    env_cfg.domain_rand.friction_range = [0.8, 0.8]
-    env_cfg.domain_rand.restitution_range = [0.0, 0.0]
-    env_cfg.domain_rand.added_mass_range = [0., 0.]  # kg
-    env_cfg.domain_rand.com_x_pos_range = [-0.0, 0.0]
-    env_cfg.domain_rand.com_y_pos_range = [-0.0, 0.0]
-    env_cfg.domain_rand.com_z_pos_range = [-0.0, 0.0]
+    # Keep domain randomizations ENABLED but with fixed values to match training observation structure
+    env_cfg.domain_rand.friction_range = [0.8, 0.8]  # Fixed value
+    env_cfg.domain_rand.restitution_range = [0.0, 0.0]  # Fixed value
+    env_cfg.domain_rand.added_mass_range = [0., 0.]  # Fixed value (no added mass)
+    env_cfg.domain_rand.com_x_pos_range = [0.0, 0.0]  # Fixed value (no offset)
+    env_cfg.domain_rand.com_y_pos_range = [0.0, 0.0]  # Fixed value (no offset)
+    env_cfg.domain_rand.com_z_pos_range = [0.0, 0.0]  # Fixed value (no offset)
 
     env_cfg.domain_rand.randomize_action_latency = False
     env_cfg.domain_rand.push_robots = False
-    env_cfg.domain_rand.randomize_gains = True
-    env_cfg.domain_rand.randomize_base_mass = False
-    env_cfg.domain_rand.randomize_link_mass = False
-    env_cfg.domain_rand.randomize_com_pos = False
+    env_cfg.domain_rand.randomize_gains = True  # Keep enabled with fixed values
+    env_cfg.domain_rand.randomize_friction = True  # MUST be True to include in observations
+    env_cfg.domain_rand.randomize_restitution = True  # MUST be True to include in observations
+    env_cfg.domain_rand.randomize_base_mass = True  # MUST be True to include in observations
+    env_cfg.domain_rand.randomize_com_pos = True  # MUST be True to include in observations
+    env_cfg.domain_rand.randomize_link_mass = False  # Doesn't affect observations
     env_cfg.domain_rand.randomize_motor_strength = False
 
     train_cfg.runner.amp_num_preload_transitions = 1
@@ -121,18 +124,19 @@ def play(args):
     # Initialize world model components only if using WMPRunner
     use_world_model = hasattr(ppo_runner, '_world_model')
 
+    # Verify observation dimensions match expected
+    print(f"Observation shape: {obs.shape}, Expected: [{env.num_envs}, {env.num_obs}]")
+    if obs.shape[-1] != env.num_obs:
+        print(f"WARNING: Observation dimension mismatch! Got {obs.shape[-1]}, expected {env.num_obs}")
+        print(f"This may cause incorrect behavior. Check domain_rand settings in play.py")
+
     if use_world_model:
-        # Initialize trajectory history
         history_length = 5
-        trajectory_history = torch.zeros(size=(env.num_envs, history_length, env.num_obs -
-                                                env.privileged_dim - env.height_dim - 3), device = env.device)
-        # Handle the case when height_dim = 0 (avoid using -0 in slice which becomes 0)
-        if env.height_dim > 0:
-            obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
-                                                obs[:, env.privileged_dim + 9:-env.height_dim]), dim=1)
-        else:
-            obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
-                                                obs[:, env.privileged_dim + 9:]), dim=1)
+        # Use env.num_obs for consistent trajectory dimension (needed for trained model compatibility)
+        traj_end_idx = env.num_obs - env.height_dim
+        obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
+                                            obs[:, env.privileged_dim + 9:traj_end_idx]), dim=1)
+        trajectory_history = torch.zeros(size=(env.num_envs, history_length, obs_without_command.shape[1]), device = env.device)
         trajectory_history = torch.concat((trajectory_history[:, 1:], obs_without_command.unsqueeze(1)), dim=1)
 
         # Initialize world model
@@ -172,10 +176,14 @@ def play(args):
             history = trajectory_history.flatten(1).to(env.device)
             actions = policy(obs.detach(), history.detach(), wm_feature.detach())
         else:
-            actions = policy(obs.detach())
+            # Extract actor observation (skip privileged_dim and lin_vel, take prop_dim + action_dim)
+            start_idx = env.privileged_dim + 3
+            end_idx = start_idx + env.cfg.env.prop_dim + env.cfg.env.action_dim
+            actor_obs = obs[:, start_idx:end_idx]
+            actions = policy(actor_obs.detach())
 
 
-        obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
+        obs, _, rews, dones, infos, reset_env_ids = env.step(actions.detach())
 
         not_dones *= (~dones)
         total_reward += torch.mean(rews * not_dones)
@@ -203,15 +211,11 @@ def play(args):
         if use_world_model:
             env_ids = dones.nonzero(as_tuple=False).flatten()
             trajectory_history[env_ids] = 0
-            # Handle the case when height_dim = 0 (avoid using -0 in slice which becomes 0)
-            if env.height_dim > 0:
-                obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
-                                                    obs[:, env.privileged_dim + 9:-env.height_dim]),
-                                                   dim=1)
-            else:
-                obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
-                                                    obs[:, env.privileged_dim + 9:]),
-                                                   dim=1)
+            # Use env.num_obs for consistent trajectory dimension
+            traj_end_idx = env.num_obs - env.height_dim
+            obs_without_command = torch.concat((obs[:, env.privileged_dim:env.privileged_dim + 6],
+                                                obs[:, env.privileged_dim + 9:traj_end_idx]),
+                                               dim=1)
             trajectory_history = torch.concat(
                 (trajectory_history[:, 1:], obs_without_command.unsqueeze(1)), dim=1)
 

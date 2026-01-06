@@ -140,7 +140,7 @@ class LeggedRobot(BaseTask):
             self.obs_buf_history.reset(
                 torch.arange(self.num_envs, device=self.device),
                 self.obs_buf[torch.arange(self.num_envs, device=self.device)])
-        obs, privileged_obs, _, _, _, _, _ = self.step(torch.zeros(self.num_envs, self.num_actions, device=self.device, requires_grad=False))
+        obs, privileged_obs, _, _, _, _ = self.step(torch.zeros(self.num_envs, self.num_actions, device=self.device, requires_grad=False))
         return obs, privileged_obs
 
     def step(self, actions):

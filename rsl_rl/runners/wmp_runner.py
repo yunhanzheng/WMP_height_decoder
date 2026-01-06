@@ -252,7 +252,7 @@ class WMPRunner:
 
                     history = self.trajectory_history.flatten(1).to(self.device)
                     actions = self.alg.act(obs, critic_obs, history, wm_feature.to(self.env.device))
-                    obs, privileged_obs, rewards, dones, infos, reset_env_ids, _ = self.env.step(actions)
+                    obs, privileged_obs, rewards, dones, infos, reset_env_ids = self.env.step(actions)
 
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs, rewards, dones = obs.to(self.device), critic_obs.to(

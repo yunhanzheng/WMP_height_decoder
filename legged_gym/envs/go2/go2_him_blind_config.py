@@ -13,6 +13,11 @@ class GO2HIMBlindCfg(GO2BaseCfg):
         num_privileged_obs = prop_dim + privileged_dim + height_dim + action_dim
         privileged_obs = True  # Disable extra privileged observations (domain randomization params)
 
+        num_one_step_observations = 45
+        num_observations = num_one_step_observations * 6
+        num_one_step_privileged_obs = 45 + 3 + 3 + 187  # same as observations, no base_lin_vel, disturbance, or heights
+        num_privileged_obs = num_one_step_privileged_obs * 1 # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise
+
     class depth:
         use_camera = False
         camera_num_envs = 1024

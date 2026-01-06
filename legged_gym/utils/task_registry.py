@@ -38,7 +38,7 @@ import torch
 import numpy as np
 
 from rsl_rl.env import VecEnv
-from rsl_rl.runners import OnPolicyRunner, WMPRunner
+from rsl_rl.runners import OnPolicyRunner, WMPRunner, HIMOnPolicyRunner
 from rsl_rl.algorithms import PPO, PPOWMP
 
 from legged_gym import LEGGED_GYM_ROOT_DIR, LEGGED_GYM_ENVS_DIR
