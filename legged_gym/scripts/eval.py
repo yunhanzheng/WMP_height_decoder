@@ -49,23 +49,22 @@ def evaluate(args):
 
     env_cfg.noise.add_noise = add_noise
 
-    # Domain randomization settings
-    if not randomize:
-        env_cfg.domain_rand.friction_range = [0.5, 0.5]
-        env_cfg.domain_rand.restitution_range = [0.0, 0.0]
-        env_cfg.domain_rand.added_mass_range = [0., 0.]
-        env_cfg.domain_rand.com_x_pos_range = [-0.0, 0.0]
-        env_cfg.domain_rand.com_y_pos_range = [-0.0, 0.0]
-        env_cfg.domain_rand.com_z_pos_range = [-0.0, 0.0]
-        env_cfg.domain_rand.randomize_action_latency = False
-        env_cfg.domain_rand.push_robots = False
-        env_cfg.domain_rand.randomize_gains = False
-        env_cfg.domain_rand.randomize_base_mass = False
-        env_cfg.domain_rand.randomize_link_mass = False
-        env_cfg.domain_rand.randomize_com_pos = False
-        env_cfg.domain_rand.randomize_motor_strength = False
-        env_cfg.domain_rand.stiffness_multiplier_range = [1.0, 1.0]
-        env_cfg.domain_rand.damping_multiplier_range = [1.0, 1.0]
+    env_cfg.domain_rand.friction_range = [0.8, 0.8]  # Fixed value
+    env_cfg.domain_rand.restitution_range = [0.0, 0.0]  # Fixed value
+    env_cfg.domain_rand.added_mass_range = [0., 0.]  # Fixed value (no added mass)
+    env_cfg.domain_rand.com_x_pos_range = [0.0, 0.0]  # Fixed value (no offset)
+    env_cfg.domain_rand.com_y_pos_range = [0.0, 0.0]  # Fixed value (no offset)
+    env_cfg.domain_rand.com_z_pos_range = [0.0, 0.0]  # Fixed value (no offset)
+
+    env_cfg.domain_rand.randomize_action_latency = False
+    env_cfg.domain_rand.push_robots = False
+    env_cfg.domain_rand.randomize_gains = True  # Keep enabled with fixed values
+    env_cfg.domain_rand.randomize_friction = True  # MUST be True to include in observations
+    env_cfg.domain_rand.randomize_restitution = True  # MUST be True to include in observations
+    env_cfg.domain_rand.randomize_base_mass = True  # MUST be True to include in observations
+    env_cfg.domain_rand.randomize_com_pos = True  # MUST be True to include in observations
+    env_cfg.domain_rand.randomize_link_mass = False  # Doesn't affect observations
+    env_cfg.domain_rand.randomize_motor_strength = False
 
     # Command settings
     env_cfg.commands.ranges.lin_vel_x = [vel_x, vel_x]
@@ -159,9 +158,13 @@ def evaluate(args):
             history = trajectory_history.flatten(1).to(env.device)
             actions = policy(obs.detach(), history.detach(), wm_feature.detach())
         else:
-            actions = policy(obs.detach())
+            # Extract actor observation (skip privileged_dim and lin_vel, take prop_dim + action_dim)
+            start_idx = env.privileged_dim + 3
+            end_idx = start_idx + env.cfg.env.prop_dim + env.cfg.env.action_dim
+            actor_obs = obs[:, start_idx:end_idx]
+            actions = policy(actor_obs.detach())
 
-        obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
+        obs, _, rews, dones, infos, reset_env_ids = env.step(actions.detach())
 
         # Accumulate rewards only for environments that haven't finished
         total_rewards += rews * (~env_dones).float()
@@ -370,13 +373,13 @@ if __name__ == '__main__':
     # EVALUATION CONFIGURATION (Edit these values)
     # ============================================
     NUM_ENVS = 100          # Number of parallel environments
-    DIFFICULTY = 0.1       # Terrain difficulty (0.0 - 1.0)
+    DIFFICULTY = 0.12       # Terrain difficulty (0.0 - 1.0)
     VEL_X = 0.8           # Forward velocity command (m/s)
     VEL_Y = 0.0           # Lateral velocity command (m/s)
     VEL_YAW = 0.0         # Yaw velocity command (rad/s)
     RANDOMIZE = False     # Enable domain randomization
     ADD_NOISE = False     # Add observation noise
-    SHOW_ALL = True       # Show all individual environment rewards
+    SHOW_ALL = False       # Show all individual environment rewards
     # ============================================
 
     args = get_args()
