@@ -283,7 +283,14 @@ class Terrain:
                 + difficulty * (max_filled_rate - min_filled_rate),  # from 10% to 50%
             )
         elif choice < self.proportions[7]:
-            gap_terrain(terrain, gap_size=gap_size, platform_size=3.0)
+            # One obstacle terrain - two stripes at edges
+            obstacle_height = 0.12
+            terrain_utils.discrete_one_obstacle_terrain(
+                terrain,
+                height=obstacle_height,
+                width=0.2,
+                platform_size=1.0
+            )
         else:
             pit_terrain(terrain, depth=pit_depth, platform_size=4.0)
 
