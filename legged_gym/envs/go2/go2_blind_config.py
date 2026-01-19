@@ -13,6 +13,7 @@ class GO2BlindCfg(GO2BaseCfg):
         num_privileged_obs = prop_dim + privileged_dim + height_dim + action_dim
         forward_height_dim = 0 # for depth image prediction
         privileged_obs = True  # Disable extra privileged observations (domain randomization params)
+        asymmetric_actor = True
 
     class depth:
         use_camera = False
@@ -25,7 +26,7 @@ class GO2BlindCfg(GO2BaseCfg):
         z_angle = [0, 0]
         x_angle = [0, 0]
 
-        update_interval = 5  # 5 works without retraining, 8 worse
+        update_interval = 2  # 5 works without retraining, 8 worse
 
         original = (64, 64)
         resized = (64, 64)
@@ -63,7 +64,7 @@ class GO2BlindCfgPPO( LeggedRobotCfgPPO ):
         experiment_name = 'go2_blind'
         algorithm_class_name = 'PPOWMP'
         policy_class_name = 'ActorCritic'
-        max_iterations = 20000  # number of policy updates
+        max_iterations = 15000  # number of policy updates
         save_interval = 1000
         use_wandb = True
 

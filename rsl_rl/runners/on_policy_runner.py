@@ -63,8 +63,15 @@ class OnPolicyRunner:
         else:
             num_critic_obs = self.env.num_obs
 
-        # Actor gets only proprioception + actions
-        num_actor_obs = self.env.cfg.env.prop_dim + self.env.cfg.env.action_dim
+        # Actor observation dimension
+        # Check for asymmetric_actor flag in config (default True for backward compatibility)
+        asymmetric_actor = getattr(self.env.cfg.env, 'asymmetric_actor', True)
+        if asymmetric_actor:
+            # Asymmetric learning: actor gets only proprioception + actions
+            num_actor_obs = self.env.cfg.env.prop_dim + self.env.cfg.env.action_dim
+        else:
+            # Symmetric learning: actor gets full observations like critic
+            num_actor_obs = self.env.num_obs
 
         actor_critic_class = eval(self.cfg["policy_class_name"]) # ActorCritic
         actor_critic: ActorCritic = actor_critic_class( num_actor_obs,
@@ -109,17 +116,23 @@ class OnPolicyRunner:
         _, _ = self.env.reset()
 
     def _get_actor_obs(self, obs):
-        """Extract proprioception + actions for actor (no lin_vel, no privileged info, no heights)"""
-        # Observation structure: [privileged_dim][obs_with_vel][height_dim]
-        # obs_with_vel = [lin_vel(3)][ang_vel(3)][gravity(3)][commands(3)][dof_pos(12)][dof_vel(12)][actions(12)]
-        # We want: [ang_vel(3)][gravity(3)][commands(3)][dof_pos(12)][dof_vel(12)][actions(12)]
+        """Extract observations for actor based on asymmetric_actor flag"""
+        asymmetric_actor = getattr(self.env.cfg.env, 'asymmetric_actor', True)
 
-        # Skip first privileged_dim dimensions and first 3 dims of obs_with_vel (lin_vel)
-        start_idx = self.env.privileged_dim + 3
-        # Take next prop_dim + action_dim dimensions
-        end_idx = start_idx + self.env.cfg.env.prop_dim + self.env.cfg.env.action_dim
+        if asymmetric_actor:
+            # Asymmetric learning: Extract only proprioception + actions
+            # Observation structure: [privileged_dim][obs_with_vel][height_dim]
+            # obs_with_vel = [lin_vel(3)][ang_vel(3)][gravity(3)][commands(3)][dof_pos(12)][dof_vel(12)][actions(12)]
+            # We want: [ang_vel(3)][gravity(3)][commands(3)][dof_pos(12)][dof_vel(12)][actions(12)]
 
-        return obs[:, start_idx:end_idx]
+            # Skip first privileged_dim dimensions and first 3 dims of obs_with_vel (lin_vel)
+            start_idx = self.env.privileged_dim + 3
+            # Take next prop_dim + action_dim dimensions
+            end_idx = start_idx + self.env.cfg.env.prop_dim + self.env.cfg.env.action_dim
+            return obs[:, start_idx:end_idx]
+        else:
+            # Symmetric learning: Actor gets full observations
+            return obs
 
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         # initialize writer

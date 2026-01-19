@@ -91,8 +91,9 @@ class LeggedRobotCfg(BaseConfig):
         lin_vel = [0.0, 0.0, 0.0]  # x,y,z [m/s]
         ang_vel = [0.0, 0.0, 0.0]  # x,y,z [rad/s]
         default_joint_angles = { # target angles when action = 0.0
-            "joint_a": 0., 
+            "joint_a": 0.,
             "joint_b": 0.}
+        randomize_position = True  # if True, randomize xy position within 1m of center
 
     class control:
         control_type = 'P' # P: position, V: velocity, T: torques
