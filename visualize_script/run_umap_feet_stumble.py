@@ -1,9 +1,9 @@
 """
-Standalone script to generate t-SNE visualization of world model recurrent states
+Standalone script to generate UMAP visualization of world model recurrent states
 colored by feet stumble events
 
 Usage:
-    TSNE_NUM_STEPS=1000 python run_tsne_feet_stumble.py --task=go2_blind --checkpoint=13000
+    UMAP_NUM_STEPS=1000 python run_tsne_feet_stumble.py --task=go2_blind --checkpoint=13000
 """
 
 import argparse
@@ -37,11 +37,11 @@ def main():
     env_args = get_args()
 
     # Set visualization parameters
-    num_steps = int(os.environ.get('TSNE_NUM_STEPS', '1000'))
-    use_full_state = os.environ.get('TSNE_USE_FULL_STATE', 'false').lower() == 'true'
-    save_path = os.environ.get('TSNE_SAVE_PATH', 'tsne_near_obstacle.png')
-    perplexity = int(os.environ.get('TSNE_PERPLEXITY', '30'))
-    height_threshold = float(os.environ.get('TSNE_HEIGHT_THRESHOLD', '0.05'))
+    num_steps = int(os.environ.get('UMAP_NUM_STEPS', '1000'))
+    use_full_state = os.environ.get('UMAP_USE_FULL_STATE', 'false').lower() == 'true'
+    save_path = os.environ.get('UMAP_SAVE_PATH', 'umap_near_obstacle.png')
+    n_neighbors = int(os.environ.get('UMAP_N_NEIGHBORS', '15'))
+    height_threshold = float(os.environ.get('UMAP_HEIGHT_THRESHOLD', '0.05'))
 
     print(f"\nVisualization settings:")
     print(f"  - num_steps: {num_steps}")
@@ -49,8 +49,8 @@ def main():
     print(f"  - color_by: near_obstacle (terrain scan height)")
     print(f"  - height_threshold: {height_threshold}m")
     print(f"  - save_path: {save_path}")
-    print(f"  - perplexity: {perplexity}")
-    print(f"\nTip: Set environment variables to customize (e.g., TSNE_HEIGHT_THRESHOLD=0.08)")
+    print(f"  - n_neighbors: {n_neighbors}")
+    print(f"\nTip: Set environment variables to customize (e.g., UMAP_HEIGHT_THRESHOLD=0.08)")
 
     # Get environment and training configs
     env_cfg, train_cfg = task_registry.get_cfgs(name=env_args.task)
@@ -64,6 +64,7 @@ def main():
     env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
     env_cfg.noise.add_noise = False
+    env_cfg.depth.update_interval = 2  # Can differ from training config
     # Keep domain randomizations ENABLED but with fixed values to match training observation structure
     env_cfg.domain_rand.friction_range = [0.8, 0.8]  # Fixed value
     env_cfg.domain_rand.restitution_range = [0.0, 0.0]  # Fixed value
@@ -92,6 +93,8 @@ def main():
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
     env_cfg.commands.ranges.heading = [0.0, 0.0]
 
+    env_cfg.init_state.randomize_position = False
+
     # Create environment
     env, _ = task_registry.make_env(name=env_args.task, args=env_args, env_cfg=env_cfg)
 
@@ -101,13 +104,16 @@ def main():
 
     log_root = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name)
 
+    # Use load_run from args if provided, otherwise use -1 (latest)
+    load_run = env_args.load_run if env_args.load_run else -1
+
     if env_args.checkpoint is None:
         print("No checkpoint provided, searching for latest checkpoint...")
-        checkpoint_path = get_load_path(log_root, load_run=-1, checkpoint=-1)
+        checkpoint_path = get_load_path(log_root, load_run=load_run, checkpoint=-1)
         print(f"Found latest checkpoint: {checkpoint_path}")
     else:
         # env_args.checkpoint is an integer, convert to path using get_load_path
-        checkpoint_path = get_load_path(log_root, load_run=-1, checkpoint=env_args.checkpoint)
+        checkpoint_path = get_load_path(log_root, load_run=load_run, checkpoint=env_args.checkpoint)
         if not os.path.exists(checkpoint_path):
             print(f"ERROR: Checkpoint file not found: {checkpoint_path}")
             sys.exit(1)
@@ -135,18 +141,18 @@ def main():
     from visualize_feet_stumble import visualize_feet_stumble_from_checkpoint
 
     # Run visualization
-    visualizer, tsne_results = visualize_feet_stumble_from_checkpoint(
+    visualizer, umap_results = visualize_feet_stumble_from_checkpoint(
         checkpoint_path=checkpoint_path,
         runner=runner,
         num_steps=num_steps,
         use_deter_only=not use_full_state,
         save_path=save_path,
-        perplexity=perplexity,
+        n_neighbors=n_neighbors,
         height_threshold=height_threshold
     )
 
     print(f"\nVisualization saved to: {save_path}")
-    print(f"t-SNE results shape: {tsne_results.shape}")
+    print(f"UMAP results shape: {umap_results.shape}")
 
     # Print some statistics
     print(f"\nCollected {len(visualizer.states)} batches of states")
