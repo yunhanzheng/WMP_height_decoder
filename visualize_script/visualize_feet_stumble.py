@@ -5,7 +5,7 @@ Extended RecurrentStateVisualizer that tracks and visualizes feet stumble events
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.manifold import TSNE
+import umap
 from visualize_recurrent_state import RecurrentStateVisualizer
 
 
@@ -38,12 +38,12 @@ class FeetStumbleVisualizer(RecurrentStateVisualizer):
             feet_stumble = feet_stumble.detach().cpu().numpy()
         self.metadata['feet_stumble'].append(feet_stumble)
 
-    def plot_tsne_stumble(self, tsne_results, save_path=None, figsize=(12, 8)):
+    def plot_umap_stumble(self, umap_results, save_path=None, figsize=(12, 8)):
         """
-        Plot t-SNE results colored by near-obstacle events (terrain scan height)
+        Plot UMAP results colored by near-obstacle events (terrain scan height)
 
         Args:
-            tsne_results: Output from compute_tsne()
+            umap_results: Output from compute_umap()
             save_path: Optional path to save the figure
             figsize: Figure size
         """
@@ -58,20 +58,20 @@ class FeetStumbleVisualizer(RecurrentStateVisualizer):
         # Plot far-from-obstacle points first (in blue)
         far_mask = ~near_obstacle.astype(bool)
         if np.any(far_mask):
-            ax.scatter(tsne_results[far_mask, 0],
-                      tsne_results[far_mask, 1],
+            ax.scatter(umap_results[far_mask, 0],
+                      umap_results[far_mask, 1],
                       c='blue', alpha=0.3, s=10, label='Far from Obstacles')
 
         # Plot near-obstacle points on top (in red) so they're more visible
         near_mask = near_obstacle.astype(bool)
         if np.any(near_mask):
-            ax.scatter(tsne_results[near_mask, 0],
-                      tsne_results[near_mask, 1],
+            ax.scatter(umap_results[near_mask, 0],
+                      umap_results[near_mask, 1],
                       c='red', alpha=0.7, s=15, label='Near Obstacles')
 
-        ax.set_xlabel('t-SNE Dimension 1', fontsize=12)
-        ax.set_ylabel('t-SNE Dimension 2', fontsize=12)
-        ax.set_title('t-SNE of Recurrent States (colored by Obstacle Proximity)', fontsize=14)
+        ax.set_xlabel('UMAP Dimension 1', fontsize=12)
+        ax.set_ylabel('UMAP Dimension 2', fontsize=12)
+        ax.set_title('UMAP of Recurrent States (colored by Obstacle Proximity)', fontsize=14)
         ax.grid(True, alpha=0.3)
         ax.legend(loc='best', fontsize=10)
 
@@ -142,7 +142,7 @@ def compute_near_obstacle(measured_heights, threshold=0.05, close_range_x=(-0.01
 
 def visualize_feet_stumble_from_checkpoint(checkpoint_path, runner, num_steps=1000,
                                           use_deter_only=True, save_path=None,
-                                          perplexity=30, height_threshold=0.05):
+                                          n_neighbors=15, height_threshold=0.05):
     """
     Collect states from a trained model and visualize with near-obstacle coloring
 
@@ -152,7 +152,7 @@ def visualize_feet_stumble_from_checkpoint(checkpoint_path, runner, num_steps=10
         num_steps: Number of steps to collect
         use_deter_only: Whether to use only deterministic state
         save_path: Path to save the plot
-        perplexity: t-SNE perplexity parameter
+        n_neighbors: UMAP n_neighbors parameter
         height_threshold: Height threshold in meters for obstacle detection (default: 0.05m)
     """
     # Load checkpoint
@@ -262,10 +262,10 @@ def visualize_feet_stumble_from_checkpoint(checkpoint_path, runner, num_steps=10
             if step % 100 == 0:
                 print(f"Step {step}/{num_steps}")
 
-    print("Computing t-SNE...")
-    tsne_results = visualizer.compute_tsne(perplexity=perplexity)
+    print("Computing UMAP...")
+    umap_results = visualizer.compute_umap(n_neighbors=n_neighbors)
 
     print("Plotting...")
-    visualizer.plot_tsne_stumble(tsne_results, save_path=save_path)
+    visualizer.plot_umap_stumble(umap_results, save_path=save_path)
 
-    return visualizer, tsne_results
+    return visualizer, umap_results

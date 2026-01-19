@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.manifold import TSNE
+import umap
 import argparse
 import os
 
@@ -11,7 +11,7 @@ class RecurrentStateVisualizer:
         Initialize the visualizer
 
         Args:
-            use_deter_only: If True, only use deterministic state for t-SNE.
+            use_deter_only: If True, only use deterministic state for UMAP.
                           If False, use both deterministic and stochastic states.
         """
         self.use_deter_only = use_deter_only
@@ -66,48 +66,47 @@ class RecurrentStateVisualizer:
                 action = action.detach().cpu().numpy()
             self.metadata['actions'].append(action)
 
-    def compute_tsne(self, n_components=2, perplexity=30, n_iter=5000, random_state=42):
+    def compute_umap(self, n_components=2, n_neighbors=15, min_dist=0.1, random_state=42):
         """
-        Compute t-SNE on collected states
+        Compute UMAP on collected states
 
         Args:
-            n_components: Number of dimensions for t-SNE (typically 2 or 3)
-            perplexity: t-SNE perplexity parameter
-            n_iter: Number of iterations for optimization
+            n_components: Number of dimensions for UMAP (typically 2 or 3)
+            n_neighbors: Number of neighbors to consider (similar to perplexity in t-SNE)
+            min_dist: Minimum distance between points in the embedding
             random_state: Random seed
 
         Returns:
-            tsne_results: Array of shape [n_samples, n_components]
+            umap_results: Array of shape [n_samples, n_components]
         """
         if len(self.states) == 0:
             raise ValueError("No states collected. Call collect_state() first.")
 
         # Concatenate all states
         all_states = np.concatenate(self.states, axis=0)
-        print(f"Computing t-SNE on {all_states.shape[0]} samples with dimension {all_states.shape[1]}")
+        print(f"Computing UMAP on {all_states.shape[0]} samples with dimension {all_states.shape[1]}")
 
-        # Adjust perplexity if necessary (must be less than n_samples)
+        # Adjust n_neighbors if necessary (must be less than n_samples)
         n_samples = all_states.shape[0]
-        max_perplexity = (n_samples - 1) // 3  # Conservative upper bound
-        if perplexity >= n_samples:
-            adjusted_perplexity = min(30, max_perplexity)
-            print(f"WARNING: Perplexity {perplexity} is too high for {n_samples} samples.")
-            print(f"Adjusting perplexity to {adjusted_perplexity}")
-            perplexity = adjusted_perplexity
+        if n_neighbors >= n_samples:
+            adjusted_n_neighbors = min(15, n_samples - 1)
+            print(f"WARNING: n_neighbors {n_neighbors} is too high for {n_samples} samples.")
+            print(f"Adjusting n_neighbors to {adjusted_n_neighbors}")
+            n_neighbors = adjusted_n_neighbors
 
-        # Apply t-SNE
-        tsne = TSNE(n_components=n_components, perplexity=perplexity,
-                   n_iter=n_iter, random_state=random_state, verbose=1)
-        tsne_results = tsne.fit_transform(all_states)
+        # Apply UMAP
+        reducer = umap.UMAP(n_components=n_components, n_neighbors=n_neighbors,
+                           min_dist=min_dist, random_state=random_state, verbose=True)
+        umap_results = reducer.fit_transform(all_states)
 
-        return tsne_results
+        return umap_results
 
-    def plot_tsne(self, tsne_results, color_by='timestep', save_path=None, figsize=(10, 8)):
+    def plot_umap(self, umap_results, color_by='timestep', save_path=None, figsize=(10, 8)):
         """
-        Plot t-SNE results
+        Plot UMAP results
 
         Args:
-            tsne_results: Output from compute_tsne()
+            umap_results: Output from compute_umap()
             color_by: What to color points by ('timestep', 'reward', 'episode', or None)
             save_path: Optional path to save the figure
             figsize: Figure size
@@ -117,33 +116,33 @@ class RecurrentStateVisualizer:
         # Determine colors
         if color_by == 'timestep' and len(self.metadata['timesteps']) > 0:
             timesteps = np.concatenate(self.metadata['timesteps'])
-            scatter = ax.scatter(tsne_results[:, 0], tsne_results[:, 1],
+            scatter = ax.scatter(umap_results[:, 0], umap_results[:, 1],
                                c=timesteps, cmap='viridis', alpha=0.6, s=10)
             plt.colorbar(scatter, ax=ax, label='Timestep')
-            title = 't-SNE of Recurrent States (colored by timestep)'
+            title = 'UMAP of Recurrent States (colored by timestep)'
 
         elif color_by == 'reward' and len(self.metadata['rewards']) > 0:
             rewards = np.concatenate(self.metadata['rewards'])
             if len(rewards.shape) > 1:
                 rewards = rewards.flatten()
-            scatter = ax.scatter(tsne_results[:, 0], tsne_results[:, 1],
+            scatter = ax.scatter(umap_results[:, 0], umap_results[:, 1],
                                c=rewards, cmap='RdYlGn', alpha=0.6, s=10)
             plt.colorbar(scatter, ax=ax, label='Reward')
-            title = 't-SNE of Recurrent States (colored by reward)'
+            title = 'UMAP of Recurrent States (colored by reward)'
 
         elif color_by == 'episode' and len(self.metadata['episodes']) > 0:
             episodes = np.concatenate(self.metadata['episodes'])
-            scatter = ax.scatter(tsne_results[:, 0], tsne_results[:, 1],
+            scatter = ax.scatter(umap_results[:, 0], umap_results[:, 1],
                                c=episodes, cmap='tab20', alpha=0.6, s=10)
             plt.colorbar(scatter, ax=ax, label='Episode')
-            title = 't-SNE of Recurrent States (colored by episode)'
+            title = 'UMAP of Recurrent States (colored by episode)'
 
         else:
-            ax.scatter(tsne_results[:, 0], tsne_results[:, 1], alpha=0.6, s=10)
-            title = 't-SNE of Recurrent States'
+            ax.scatter(umap_results[:, 0], umap_results[:, 1], alpha=0.6, s=10)
+            title = 'UMAP of Recurrent States'
 
-        ax.set_xlabel('t-SNE Dimension 1')
-        ax.set_ylabel('t-SNE Dimension 2')
+        ax.set_xlabel('UMAP Dimension 1')
+        ax.set_ylabel('UMAP Dimension 2')
         ax.set_title(title)
         ax.grid(True, alpha=0.3)
 
@@ -168,7 +167,7 @@ class RecurrentStateVisualizer:
 
 def visualize_from_checkpoint(checkpoint_path, runner, num_steps=1000,
                               use_deter_only=True, color_by='timestep',
-                              save_path=None, perplexity=30):
+                              save_path=None, n_neighbors=15):
     """
     Collect states from a trained model and visualize
 
@@ -179,7 +178,7 @@ def visualize_from_checkpoint(checkpoint_path, runner, num_steps=1000,
         use_deter_only: Whether to use only deterministic state
         color_by: What to color points by
         save_path: Path to save the plot
-        perplexity: t-SNE perplexity parameter (default: 30)
+        n_neighbors: UMAP n_neighbors parameter (default: 15)
     """
     # Load checkpoint
     runner.load(checkpoint_path)
@@ -278,17 +277,17 @@ def visualize_from_checkpoint(checkpoint_path, runner, num_steps=1000,
             if step % 100 == 0:
                 print(f"Step {step}/{num_steps}")
 
-    print("Computing t-SNE...")
-    tsne_results = visualizer.compute_tsne(perplexity=perplexity)
+    print("Computing UMAP...")
+    umap_results = visualizer.compute_umap(n_neighbors=n_neighbors)
 
     print("Plotting...")
-    visualizer.plot_tsne(tsne_results, color_by=color_by, save_path=save_path)
+    visualizer.plot_umap(umap_results, color_by=color_by, save_path=save_path)
 
-    return visualizer, tsne_results
+    return visualizer, umap_results
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Visualize recurrent states with t-SNE')
+    parser = argparse.ArgumentParser(description='Visualize recurrent states with UMAP')
     parser.add_argument('--checkpoint', type=str, required=True, help='Path to model checkpoint')
     parser.add_argument('--num_steps', type=int, default=1000, help='Number of steps to collect')
     parser.add_argument('--use_full_state', action='store_true',
@@ -296,7 +295,7 @@ if __name__ == "__main__":
     parser.add_argument('--color_by', type=str, default='timestep',
                        choices=['timestep', 'reward', 'episode', 'none'],
                        help='What to color points by')
-    parser.add_argument('--save_path', type=str, default='tsne_recurrent_state.png',
+    parser.add_argument('--save_path', type=str, default='umap_recurrent_state.png',
                        help='Path to save the plot')
 
     args = parser.parse_args()
@@ -308,12 +307,12 @@ if __name__ == "__main__":
     print("""
     from visualize_recurrent_state import visualize_from_checkpoint
 
-    visualizer, tsne_results = visualize_from_checkpoint(
+    visualizer, umap_results = visualize_from_checkpoint(
         checkpoint_path='path/to/model.pt',
         runner=your_runner_instance,
         num_steps=1000,
         use_deter_only=True,
         color_by='timestep',
-        save_path='tsne_visualization.png'
+        save_path='umap_visualization.png'
     )
     """)
