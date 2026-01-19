@@ -72,6 +72,8 @@ def evaluate(args):
     env_cfg.commands.ranges.ang_vel_yaw = [vel_yaw, vel_yaw]
     env_cfg.commands.ranges.heading = [0.0, 0.0]
 
+    env_cfg.init_state.randomize_position = False
+
     train_cfg.runner.amp_num_preload_transitions = 1
 
     # Create environment
@@ -158,10 +160,16 @@ def evaluate(args):
             history = trajectory_history.flatten(1).to(env.device)
             actions = policy(obs.detach(), history.detach(), wm_feature.detach())
         else:
-            # Extract actor observation (skip privileged_dim and lin_vel, take prop_dim + action_dim)
-            start_idx = env.privileged_dim + 3
-            end_idx = start_idx + env.cfg.env.prop_dim + env.cfg.env.action_dim
-            actor_obs = obs[:, start_idx:end_idx]
+            # Extract actor observation based on asymmetric_actor flag
+            asymmetric_actor = getattr(env.cfg.env, 'asymmetric_actor', True)
+            if asymmetric_actor:
+                # Asymmetric: Extract only proprioception + actions (skip privileged_dim and lin_vel)
+                start_idx = env.privileged_dim + 3
+                end_idx = start_idx + env.cfg.env.prop_dim + env.cfg.env.action_dim
+                actor_obs = obs[:, start_idx:end_idx]
+            else:
+                # Symmetric: Actor gets full observations
+                actor_obs = obs
             actions = policy(actor_obs.detach())
 
         obs, _, rews, dones, infos, reset_env_ids = env.step(actions.detach())
