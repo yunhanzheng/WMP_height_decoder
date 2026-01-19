@@ -41,11 +41,14 @@ def evaluate(args):
 
     # Override parameters
     env_cfg.env.num_envs = num_envs
-    env_cfg.terrain.num_rows = 5
+    env_cfg.env.episode_length_s = 4.6
+    env_cfg.terrain.num_rows = 1
     env_cfg.terrain.num_cols = 1
+    env_cfg.terrain.terrain_length = 2
+    env_cfg.terrain.terrain_width = 2
     env_cfg.terrain.curriculum = False
     env_cfg.terrain.difficulty = difficulty
-    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
     env_cfg.noise.add_noise = add_noise
 
@@ -93,6 +96,97 @@ def evaluate(args):
 
     # Initialize world model components only if using WMPRunner
     use_world_model = hasattr(ppo_runner, '_world_model')
+
+    # Check if using LongShortRunner
+    use_long_short = isinstance(ppo_runner, type) and 'LongShortRunner' in str(type(ppo_runner)) or \
+                     'LongShortRunner' in type(ppo_runner).__name__
+
+    # Initialize history buffers for LongShortRunner
+    if use_long_short:
+        short_history_length = ppo_runner.short_history_length
+        long_history_length = ppo_runner.long_history_length
+        prop_dim = ppo_runner.prop_dim
+
+        # Initialize history buffers
+        short_history = torch.zeros(
+            env.num_envs, short_history_length, prop_dim,
+            device=env.device, dtype=torch.float32
+        )
+        long_history = torch.zeros(
+            env.num_envs, long_history_length, prop_dim,
+            device=env.device, dtype=torch.float32
+        )
+
+        def extract_proprio(obs_tensor):
+            """Extract proprioceptive observation from full observation."""
+            privileged_dim = getattr(env, 'privileged_dim', 0)
+            start_idx = privileged_dim + 3  # Skip privileged + lin_vel
+            end_idx = start_idx + prop_dim
+            return obs_tensor[:, start_idx:end_idx]
+
+        def extract_commands(obs_tensor):
+            """Extract command from observation."""
+            privileged_dim = getattr(env, 'privileged_dim', 0)
+            start_idx = privileged_dim + 9  # privileged + lin_vel(3) + ang_vel(3) + gravity(3)
+            return obs_tensor[:, start_idx:start_idx + 3]
+
+        def update_history(proprio, dones, short_hist, long_hist):
+            """Update history buffers with new proprioceptive observation."""
+            # Shift history and add new observation
+            short_hist = torch.roll(short_hist, shifts=-1, dims=1)
+            short_hist[:, -1, :] = proprio
+
+            long_hist = torch.roll(long_hist, shifts=-1, dims=1)
+            long_hist[:, -1, :] = proprio
+
+            # Reset history for done environments
+            if dones is not None:
+                done_mask = dones.bool()
+                if done_mask.any():
+                    short_hist[done_mask] = 0
+                    long_hist[done_mask] = 0
+
+            return short_hist, long_hist
+
+        def construct_actor_obs(obs_tensor, short_hist, long_hist):
+            """Construct actor observation with history."""
+            batch_size = obs_tensor.shape[0]
+
+            # Extract components
+            commands = extract_commands(obs_tensor)
+            proprio = extract_proprio(obs_tensor)
+
+            # Current obs includes proprio + lin_vel (3)
+            privileged_dim = getattr(env, 'privileged_dim', 0)
+            lin_vel = obs_tensor[:, privileged_dim:privileged_dim + 3]
+            current_obs = torch.cat([proprio, lin_vel], dim=-1)
+
+            # Terrain one-hot placeholder
+            terrain_one_hot = torch.zeros(batch_size, 1, device=env.device)
+
+            # Flatten history buffers
+            short_hist_flat = short_hist.view(batch_size, -1)
+            long_hist_flat = long_hist.view(batch_size, -1)
+
+            # Construct full actor observation
+            actor_obs = torch.cat([
+                commands,
+                current_obs,
+                terrain_one_hot,
+                short_hist_flat,
+                long_hist_flat
+            ], dim=-1)
+
+            return actor_obs
+
+        # Initialize history with current proprio
+        proprio = extract_proprio(obs)
+        short_history, long_history = update_history(proprio, None, short_history, long_history)
+
+        print(f"LongShortRunner eval mode initialized:")
+        print(f"  prop_dim: {prop_dim}")
+        print(f"  short_history_length: {short_history_length}")
+        print(f"  long_history_length: {long_history_length}")
 
     if use_world_model:
         print("Initializing world model...")
@@ -159,6 +253,10 @@ def evaluate(args):
         if use_world_model:
             history = trajectory_history.flatten(1).to(env.device)
             actions = policy(obs.detach(), history.detach(), wm_feature.detach())
+        elif use_long_short:
+            # Construct actor observation with history for LongShortRunner
+            actor_obs = construct_actor_obs(obs, short_history, long_history)
+            actions = policy(actor_obs.detach())
         else:
             # Extract actor observation based on asymmetric_actor flag
             asymmetric_actor = getattr(env.cfg.env, 'asymmetric_actor', True)
@@ -258,6 +356,11 @@ def evaluate(args):
                                                    dim=1)
             trajectory_history = torch.concat(
                 (trajectory_history[:, 1:], obs_without_command.unsqueeze(1)), dim=1)
+
+        # Update history for LongShortRunner
+        if use_long_short:
+            proprio = extract_proprio(obs)
+            short_history, long_history = update_history(proprio, dones, short_history, long_history)
 
     elapsed_time = time.time() - start_time
 
@@ -380,7 +483,7 @@ if __name__ == '__main__':
     # ============================================
     # EVALUATION CONFIGURATION (Edit these values)
     # ============================================
-    NUM_ENVS = 100          # Number of parallel environments
+    NUM_ENVS = 500          # Number of parallel environments
     DIFFICULTY = 0.12       # Terrain difficulty (0.0 - 1.0)
     VEL_X = 0.8           # Forward velocity command (m/s)
     VEL_Y = 0.0           # Lateral velocity command (m/s)
