@@ -147,7 +147,7 @@ class GO2BaseCfg(LeggedRobotCfg):
     class rewards(LeggedRobotCfg.rewards):
         reward_curriculum = False
         class scales:
-            termination = -0.1
+            termination = -20
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
             lin_vel_z = -0.1
