@@ -26,7 +26,7 @@ class GO2BlindCfg(GO2BaseCfg):
         z_angle = [0, 0]
         x_angle = [0, 0]
 
-        update_interval = 2  # 5 works without retraining, 8 worse
+        update_interval = 5  # 5 works without retraining, 8 worse
 
         original = (64, 64)
         resized = (64, 64)

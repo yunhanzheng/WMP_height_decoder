@@ -140,7 +140,7 @@ class LeggedRobot(BaseTask):
             self.obs_buf_history.reset(
                 torch.arange(self.num_envs, device=self.device),
                 self.obs_buf[torch.arange(self.num_envs, device=self.device)])
-        obs, privileged_obs, _, _, _, _ = self.step(torch.zeros(self.num_envs, self.num_actions, device=self.device, requires_grad=False))
+        obs, privileged_obs, _, _, _, _, _ = self.step(torch.zeros(self.num_envs, self.num_actions, device=self.device, requires_grad=False))
         return obs, privileged_obs
 
     def step(self, actions):
@@ -199,7 +199,12 @@ class LeggedRobot(BaseTask):
         else:
             self.extras["depth"] = None
 
-        return policy_obs, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras, reset_env_ids
+        # Get termination privileged obs (captured before reset in post_physics_step)
+        termination_privileged_obs = getattr(self, 'termination_privileged_obs', None)
+        if termination_privileged_obs is None:
+            termination_privileged_obs = torch.zeros(0, self.privileged_obs_buf.shape[1] if self.privileged_obs_buf is not None else 0, device=self.device)
+
+        return policy_obs, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras, reset_env_ids, termination_privileged_obs
 
 
     def normalize_depth_image(self, depth_image):
@@ -288,6 +293,14 @@ class LeggedRobot(BaseTask):
         self._update_feet_air_time()  # Track feet air time before computing rewards
         self.compute_reward()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
+
+        # Compute observations before reset to capture terminal state for HIM estimator
+        self.compute_observations()
+        if self.privileged_obs_buf is not None:
+            self.termination_privileged_obs = self.privileged_obs_buf[env_ids].clone()
+        else:
+            self.termination_privileged_obs = None
+
         self.reset_idx(env_ids)
 
         self.update_depth_buffer()
@@ -475,7 +488,12 @@ class LeggedRobot(BaseTask):
                 self.privileged_obs_buf += (2 * torch.rand_like(self.privileged_obs_buf) - 1) * self.noise_scale_vec
 
             # Remove velocity observations from policy observation.
-            if self.num_obs == self.num_privileged_obs - 6:
+            if self.num_one_step_obs is not None and self.num_obs == self.num_one_step_obs:
+                # HIM-style: obs_buf is proprioceptive only (without base_lin_vel)
+                # obs_with_vel layout: lin_vel(3) + ang_vel(3) + gravity(3) + commands(3) + dof_pos(12) + dof_vel(12) + actions(12) = 48
+                # We want: ang_vel(3) + gravity(3) + commands(3) + dof_pos(12) + dof_vel(12) + actions(12) = 45
+                self.obs_buf = obs_with_vel[:, 3:]  # Remove base_lin_vel
+            elif self.num_obs == self.num_privileged_obs - 6:
                 self.obs_buf = self.privileged_obs_buf[:, 6:]
             elif self.num_obs == self.num_privileged_obs - 3:
                 self.obs_buf = self.privileged_obs_buf[:, 3:]

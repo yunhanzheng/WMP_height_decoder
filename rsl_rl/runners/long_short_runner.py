@@ -238,7 +238,7 @@ class LongShortRunner:
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
                     actions = self.alg.act(actor_obs, critic_obs)
-                    obs, privileged_obs, rewards, dones, infos, _ = self.env.step(actions)
+                    obs, privileged_obs, rewards, dones, infos, _, _ = self.env.step(actions)
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs = obs.to(self.device), critic_obs.to(self.device)
                     rewards, dones = rewards.to(self.device), dones.to(self.device)

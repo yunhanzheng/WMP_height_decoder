@@ -128,6 +128,11 @@ def play(args):
     use_long_short = isinstance(ppo_runner, type) and 'LongShortRunner' in str(type(ppo_runner)) or \
                      'LongShortRunner' in type(ppo_runner).__name__
 
+    # Check if using HIMOnPolicyRunner
+    use_him = 'HIMOnPolicyRunner' in type(ppo_runner).__name__
+    if use_him:
+        print("HIMOnPolicyRunner detected - using observation history directly")
+
     # Initialize history buffers for LongShortRunner
     if use_long_short:
         short_history_length = ppo_runner.short_history_length
@@ -270,6 +275,10 @@ def play(args):
             # Construct actor observation with history for LongShortRunner
             actor_obs = construct_actor_obs(obs, short_history, long_history)
             actions = policy(actor_obs.detach())
+        elif use_him:
+            # HIMOnPolicyRunner: obs from get_observations() already contains the history buffer
+            # obs shape is (num_envs, num_one_step_obs * history_steps) = (num_envs, 270)
+            actions = policy(obs.detach())
         else:
             # Extract actor observation based on asymmetric_actor flag
             asymmetric_actor = getattr(env.cfg.env, 'asymmetric_actor', True)
@@ -284,7 +293,7 @@ def play(args):
             actions = policy(actor_obs.detach())
 
 
-        obs, _, rews, dones, infos, reset_env_ids = env.step(actions.detach())
+        obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
 
         not_dones *= (~dones)
         total_reward += torch.mean(rews * not_dones)

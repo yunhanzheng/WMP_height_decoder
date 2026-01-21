@@ -97,7 +97,7 @@ class GO2BaseCfg(LeggedRobotCfg):
         name = "go2"
         foot_name = "foot"
         penalize_contacts_on = ["thigh", "calf"]
-        terminate_after_contacts_on = ["base"]
+        terminate_after_contacts_on = ["Head", "base"]
         self_collisions = 1  # 1 to disable, 0 to enable...bitwise filter
 
     class domain_rand:

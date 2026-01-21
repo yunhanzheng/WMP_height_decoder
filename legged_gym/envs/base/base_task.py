@@ -64,6 +64,7 @@ class BaseTask():
         self.num_obs = cfg.env.num_observations
         self.num_privileged_obs = cfg.env.num_privileged_obs
         self.num_actions = cfg.env.num_actions
+        self.num_one_step_obs = getattr(cfg.env, 'num_one_step_observations', None)
         self.include_history_steps = cfg.env.include_history_steps
 
         self.height_dim = cfg.env.height_dim

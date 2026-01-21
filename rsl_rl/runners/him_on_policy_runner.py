@@ -35,6 +35,7 @@ import statistics
 
 from torch.utils.tensorboard import SummaryWriter
 import torch
+import wandb
 
 from rsl_rl.algorithms import PPO, HIMPPO
 from rsl_rl.modules import HIMActorCritic
@@ -55,15 +56,21 @@ class HIMOnPolicyRunner:
         self.device = device
         self.env = env
         if self.env.num_privileged_obs is not None:
-            num_critic_obs = self.env.num_privileged_obs 
+            num_critic_obs = self.env.num_privileged_obs
         else:
             num_critic_obs = self.env.num_obs
-        self.num_actor_obs = self.env.num_obs
+
+        # Account for history steps if enabled
+        num_one_step_obs = self.env.num_one_step_obs if self.env.num_one_step_obs is not None else self.env.num_obs
+        history_steps = self.env.include_history_steps if self.env.include_history_steps is not None else 1
+        num_actor_obs = num_one_step_obs * history_steps
+
+        self.num_actor_obs = num_actor_obs
         self.num_critic_obs = num_critic_obs
         actor_critic_class = eval(self.cfg["policy_class_name"]) # HIMActorCritic
-        actor_critic: HIMActorCritic = actor_critic_class( self.env.num_obs,
+        actor_critic: HIMActorCritic = actor_critic_class( num_actor_obs,
                                                         num_critic_obs,
-                                                        self.env.num_one_step_obs,
+                                                        num_one_step_obs,
                                                         self.env.num_actions,
                                                         **self.policy_cfg).to(self.device)
         alg_class = eval(self.cfg["algorithm_class_name"]) # HIMPPO
@@ -72,7 +79,7 @@ class HIMOnPolicyRunner:
         self.save_interval = self.cfg["save_interval"]
 
         # init storage and model
-        self.alg.init_storage(self.env.num_envs, self.num_steps_per_env, [self.env.num_obs], [self.env.num_privileged_obs], [self.env.num_actions])
+        self.alg.init_storage(self.env.num_envs, self.num_steps_per_env, [num_actor_obs], [self.env.num_privileged_obs], [self.env.num_actions])
 
         # Log
         self.log_dir = log_dir

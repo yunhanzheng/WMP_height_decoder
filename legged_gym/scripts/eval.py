@@ -101,6 +101,11 @@ def evaluate(args):
     use_long_short = isinstance(ppo_runner, type) and 'LongShortRunner' in str(type(ppo_runner)) or \
                      'LongShortRunner' in type(ppo_runner).__name__
 
+    # Check if using HIMOnPolicyRunner
+    use_him = 'HIMOnPolicyRunner' in type(ppo_runner).__name__
+    if use_him:
+        print("HIMOnPolicyRunner detected - using observation history directly")
+
     # Initialize history buffers for LongShortRunner
     if use_long_short:
         short_history_length = ppo_runner.short_history_length
@@ -257,6 +262,10 @@ def evaluate(args):
             # Construct actor observation with history for LongShortRunner
             actor_obs = construct_actor_obs(obs, short_history, long_history)
             actions = policy(actor_obs.detach())
+        elif use_him:
+            # HIMOnPolicyRunner: obs from get_observations() already contains the history buffer
+            # obs shape is (num_envs, num_one_step_obs * history_steps) = (num_envs, 270)
+            actions = policy(obs.detach())
         else:
             # Extract actor observation based on asymmetric_actor flag
             asymmetric_actor = getattr(env.cfg.env, 'asymmetric_actor', True)
@@ -270,7 +279,7 @@ def evaluate(args):
                 actor_obs = obs
             actions = policy(actor_obs.detach())
 
-        obs, _, rews, dones, infos, reset_env_ids = env.step(actions.detach())
+        obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
 
         # Accumulate rewards only for environments that haven't finished
         total_rewards += rews * (~env_dones).float()
@@ -435,6 +444,10 @@ def evaluate(args):
 
     print(f"{'='*60}\n")
 
+    # Print Excel-friendly summary line (tab-separated)
+    print("EXCEL COPY (mean_reward, lin_vel_mse, ang_vel_mse, collision, termination, stumble):")
+    print(f"{mean_reward:.2f}\n{metric_stats['lin_vel_mse']['mean']:.4f}\n{metric_stats['ang_vel_mse']['mean']:.4f}\n{metric_stats['collision']['mean']:.4f}\n{metric_stats['termination']['mean']:.4f}\n{metric_stats['feet_stumble']['mean']:.4f}")
+
     # Print all rewards if enabled
     if SHOW_ALL:
         print("All environment rewards:")
@@ -475,15 +488,16 @@ def evaluate(args):
             results["statistics"]["metrics"][key] = metric_stats[key]
 
     # Print full results as JSON
-    print("FULL RESULTS (JSON):")
-    print(json.dumps(results, indent=2))
+    if SHOW_ALL:
+        print("FULL RESULTS (JSON):")
+        print(json.dumps(results, indent=2))
 
 
 if __name__ == '__main__':
     # ============================================
     # EVALUATION CONFIGURATION (Edit these values)
     # ============================================
-    NUM_ENVS = 500          # Number of parallel environments
+    NUM_ENVS = 100          # Number of parallel environments
     DIFFICULTY = 0.12       # Terrain difficulty (0.0 - 1.0)
     VEL_X = 0.8           # Forward velocity command (m/s)
     VEL_Y = 0.0           # Lateral velocity command (m/s)
