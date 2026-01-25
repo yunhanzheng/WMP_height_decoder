@@ -103,7 +103,7 @@ class GO2HIMLocoCfgPPO(LeggedRobotCfgPPO):
         experiment_name = 'go2_himloco'
         algorithm_class_name = 'HIMPPO'
         policy_class_name = 'HIMActorCritic'
-        max_iterations = 20000
+        max_iterations = 15000
         num_steps_per_env = 24
         save_interval = 1000
         use_wandb = True
