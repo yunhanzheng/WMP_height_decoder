@@ -240,8 +240,12 @@ def evaluate(args):
         'termination': torch.zeros((env.num_envs,), device=env.device),
         'feet_stumble': torch.zeros((env.num_envs,), device=env.device),
         'total_reward': torch.zeros((env.num_envs,), device=env.device),
+        'travel_distance': torch.zeros((env.num_envs,), device=env.device),
     }
     step_counts = torch.zeros((env.num_envs,), device=env.device)
+
+    # Track initial positions for displacement calculation
+    initial_positions = env.root_states[:, :2].clone()  # XY positions
 
     num_steps = int(env.max_episode_length)
     for i in range(num_steps + 3):
@@ -278,6 +282,9 @@ def evaluate(args):
                 # Symmetric: Actor gets full observations
                 actor_obs = obs
             actions = policy(actor_obs.detach())
+
+        # Save positions before step (needed for displacement calculation, since step resets terminated envs)
+        pre_step_positions = env.root_states[:, :2].clone()
 
         obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
 
@@ -327,6 +334,13 @@ def evaluate(args):
             stumble = torch.sum((lateral_forces > 5.0) & (vertical_forces > 1.0), dim=1)
             metrics['feet_stumble'] += stumble * active_mask.float()
 
+        # Travel distance (displacement from start position)
+        # Record displacement for environments that just terminated (use pre-step position since env resets after done)
+        newly_done = dones & ~env_dones  # Environments that are done this step but weren't before
+        if newly_done.any():
+            displacement = torch.norm(pre_step_positions - initial_positions, dim=1)
+            metrics['travel_distance'] += displacement * newly_done.float()
+
         # Count steps for active environments
         step_counts += active_mask.float()
 
@@ -371,6 +385,13 @@ def evaluate(args):
             proprio = extract_proprio(obs)
             short_history, long_history = update_history(proprio, dones, short_history, long_history)
 
+    # Capture displacement for environments that completed full episode without terminating
+    still_active = ~env_dones
+    if still_active.any():
+        current_positions = env.root_states[:, :2]
+        displacement = torch.norm(current_positions - initial_positions, dim=1)
+        metrics['travel_distance'] += displacement * still_active.float()
+
     elapsed_time = time.time() - start_time
 
     # Compute statistics
@@ -407,26 +428,35 @@ def evaluate(args):
     step_counts_cpu = step_counts.cpu().numpy()
 
     for key, values in metrics.items():
-        # Compute per-step values by dividing by step count
-        per_step_values = values.cpu().numpy() / np.maximum(step_counts_cpu, 1.0)
-
-        if key == 'total_reward':
-            # For reward, higher is better
+        if key == 'travel_distance':
+            # Travel distance is total (not per-step), higher is better
+            total_values = values.cpu().numpy()
             metric_stats[key] = {
-                'best': float(np.max(per_step_values)),
-                'mean': float(np.mean(per_step_values)),
-                'worst': float(np.min(per_step_values)),
+                'best': float(np.max(total_values)),
+                'mean': float(np.mean(total_values)),
+                'worst': float(np.min(total_values)),
             }
         else:
-            # For errors/penalties, lower is better
-            metric_stats[key] = {
-                'best': float(np.min(per_step_values)),
-                'mean': float(np.mean(per_step_values)),
-                'worst': float(np.max(per_step_values)),
-            }
+            # Compute per-step values by dividing by step count
+            per_step_values = values.cpu().numpy() / np.maximum(step_counts_cpu, 1.0)
+
+            if key == 'total_reward':
+                # For reward, higher is better
+                metric_stats[key] = {
+                    'best': float(np.max(per_step_values)),
+                    'mean': float(np.mean(per_step_values)),
+                    'worst': float(np.min(per_step_values)),
+                }
+            else:
+                # For errors/penalties, lower is better
+                metric_stats[key] = {
+                    'best': float(np.min(per_step_values)),
+                    'mean': float(np.mean(per_step_values)),
+                    'worst': float(np.max(per_step_values)),
+                }
 
     # Print in fixed order
-    metric_order = ['total_reward', 'lin_vel_mse', 'ang_vel_mse', 'collision', 'termination', 'feet_stumble']
+    metric_order = ['total_reward', 'lin_vel_mse', 'ang_vel_mse', 'collision', 'termination', 'feet_stumble', 'travel_distance']
     metric_names = {
         'total_reward': 'Total reward',
         'lin_vel_mse': 'Lin vel MSE (m²/s²)',
@@ -434,6 +464,7 @@ def evaluate(args):
         'collision': 'Collision count',
         'termination': 'Termination contact count',
         'feet_stumble': 'Feet stumble count',
+        'travel_distance': 'Displacement (m)',
     }
 
     for key in metric_order:
@@ -442,11 +473,37 @@ def evaluate(args):
             name = metric_names.get(key, key)
             print(f"{name:<30} {stats['best']:>10.4f} {stats['mean']:>10.4f} {stats['worst']:>10.4f}")
 
+    # Compute per-displacement metrics (avg by displacement)
+    print(f"\n{'─'*60}")
+    print(f"METRICS (per meter displacement)")
+    print(f"{'─'*60}")
+    print(f"{'Metric':<30} {'Best':>10} {'Mean':>10} {'Worst':>10}")
+    print(f"{'─'*60}")
+
+    travel_dist_cpu = metrics['travel_distance'].cpu().numpy()
+    per_disp_keys = ['collision', 'termination', 'feet_stumble']
+    per_disp_names = {
+        'collision': 'Collision / m',
+        'termination': 'Termination / m',
+        'feet_stumble': 'Stumble / m',
+    }
+    metric_per_disp_stats = {}
+    for key in per_disp_keys:
+        per_disp_values = metrics[key].cpu().numpy() / np.maximum(travel_dist_cpu, 0.01)
+        metric_per_disp_stats[key] = {
+            'best': float(np.min(per_disp_values)),
+            'mean': float(np.mean(per_disp_values)),
+            'worst': float(np.max(per_disp_values)),
+        }
+        stats = metric_per_disp_stats[key]
+        name = per_disp_names[key]
+        print(f"{name:<30} {stats['best']:>10.4f} {stats['mean']:>10.4f} {stats['worst']:>10.4f}")
+
     print(f"{'='*60}\n")
 
     # Print Excel-friendly summary line (tab-separated)
-    print("EXCEL COPY (mean_reward, lin_vel_mse, ang_vel_mse, collision, termination, stumble):")
-    print(f"{mean_reward:.2f}\n{metric_stats['lin_vel_mse']['mean']:.4f}\n{metric_stats['ang_vel_mse']['mean']:.4f}\n{metric_stats['collision']['mean']:.4f}\n{metric_stats['termination']['mean']:.4f}\n{metric_stats['feet_stumble']['mean']:.4f}")
+    print("EXCEL COPY (mean_reward, lin_vel_mse, ang_vel_mse, collision, termination, stumble, displacement, collision/m, termination/m, stumble/m):")
+    print(f"{mean_reward:.2f}\n{metric_stats['lin_vel_mse']['mean']:.4f}\n{metric_stats['ang_vel_mse']['mean']:.4f}\n{metric_stats['collision']['mean']:.4f}\n{metric_stats['termination']['mean']:.4f}\n{metric_stats['feet_stumble']['mean']:.4f}\n{metric_stats['travel_distance']['mean']:.4f}\n{metric_per_disp_stats['collision']['mean']:.4f}\n{metric_per_disp_stats['termination']['mean']:.4f}\n{metric_per_disp_stats['feet_stumble']['mean']:.4f}")
 
     # Print all rewards if enabled
     if SHOW_ALL:
@@ -486,6 +543,11 @@ def evaluate(args):
     for key in metric_order:
         if key in metric_stats:
             results["statistics"]["metrics"][key] = metric_stats[key]
+
+    # Add per-displacement metrics to results
+    results["statistics"]["metrics_per_displacement"] = {}
+    for key in per_disp_keys:
+        results["statistics"]["metrics_per_displacement"][key] = metric_per_disp_stats[key]
 
     # Print full results as JSON
     if SHOW_ALL:

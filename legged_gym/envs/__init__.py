@@ -35,7 +35,6 @@ from .a1.a1_config import A1RoughCfg, A1RoughCfgPPO
 from .a1.a1_amp_config import A1AMPCfg, A1AMPCfgPPO
 from .go2.go2_blind_config import GO2BlindCfg, GO2BlindCfgPPO
 from .go2.go2_baseline_blind_config import GO2BaselineBlindCfg, GO2BaselineBlindCfgPPO
-from .go2.go2_him_blind_config import GO2HIMBlindCfg, GO2HIMBlindCfgPPO
 from .go2.go2_himloco_config import GO2HIMLocoCfg, GO2HIMLocoCfgPPO
 from .go2.go2_xiao_config import GO2XiaoCfg, GO2XiaoCfgPPO
 from .go2.go2_baseline_config import GO2BaselineCfg, GO2BaselineCfgPPO
@@ -49,7 +48,6 @@ task_registry.register( "a1", LeggedRobot, A1RoughCfg(), A1RoughCfgPPO() )
 task_registry.register( "a1_amp", LeggedRobot, A1AMPCfg(), A1AMPCfgPPO() )
 task_registry.register( "go2_blind", LeggedRobot, GO2BlindCfg(), GO2BlindCfgPPO() )
 task_registry.register( "go2_baseline_blind", LeggedRobot, GO2BaselineBlindCfg(), GO2BaselineBlindCfgPPO() )
-task_registry.register( "go2_him_blind", LeggedRobot, GO2HIMBlindCfg(), GO2HIMBlindCfgPPO() )
 task_registry.register( "go2_himloco", LeggedRobot, GO2HIMLocoCfg(), GO2HIMLocoCfgPPO() )
 task_registry.register( "go2_xiao", LeggedRobot, GO2XiaoCfg(), GO2XiaoCfgPPO() )
 task_registry.register( "go2_baseline", LeggedRobot, GO2BaselineCfg(), GO2BaselineCfgPPO() )
