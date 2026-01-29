@@ -280,16 +280,9 @@ def play(args):
             # obs shape is (num_envs, num_one_step_obs * history_steps) = (num_envs, 270)
             actions = policy(obs.detach())
         else:
-            # Extract actor observation based on asymmetric_actor flag
-            asymmetric_actor = getattr(env.cfg.env, 'asymmetric_actor', True)
-            if asymmetric_actor:
-                # Asymmetric: Extract only proprioception + actions (skip privileged_dim and lin_vel)
-                start_idx = env.privileged_dim + 3
-                end_idx = start_idx + env.cfg.env.prop_dim + env.cfg.env.action_dim
-                actor_obs = obs[:, start_idx:end_idx]
-            else:
-                # Symmetric: Actor gets full observations
-                actor_obs = obs
+            # obs_buf is already constructed as actor observations in compute_observations
+            # Just use it directly
+            actor_obs = obs
             actions = policy(actor_obs.detach())
 
 

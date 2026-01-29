@@ -4,8 +4,9 @@ from legged_gym.envs.go2.go2_base import GO2BaseCfg
 
 class GO2BaselineCfg(GO2BaseCfg):
     """
-    Configuration for GO2 robot baseline with symmetric actor-critic.
-    Both actor and critic receive full observations including privileged information.
+    Configuration for GO2 robot baseline with asymmetric actor-critic.
+    Actor receives: base_lin_vel(3) + proprioception(33) + heightmap(187) + actions(12) = 235
+    Critic receives: full observations including privileged information (285).
     """
 
     class env(LeggedRobotCfg.env):
@@ -15,16 +16,19 @@ class GO2BaselineCfg(GO2BaseCfg):
         # Observation dimensions
         prop_dim = 33  # proprioception: ang_vel(3) + gravity(3) + commands(3) + dof_pos(12) + dof_vel(12)
         action_dim = 12
+        base_lin_vel_dim = 3  # base linear velocity
         privileged_dim = 24 + 26 + 3  # friction, mass, com + DR params + base linear vel
         height_dim = 187  # heightmap
 
-        # Full observation for both actor and critic
-        num_observations = prop_dim + privileged_dim + height_dim + action_dim
+        # Asymmetric actor-critic observations
+        # Actor: proprioception + base linear vel + heightmap + action
+        num_observations = prop_dim + base_lin_vel_dim + height_dim + action_dim
+        # Critic: full observations (privileged)
         num_privileged_obs = prop_dim + privileged_dim + height_dim + action_dim
 
         forward_height_dim = 0
         privileged_obs = True
-        asymmetric_actor = False  # Symmetric: both actor and critic get full observations
+        asymmetric_actor = True  # Asymmetric: actor gets partial, critic gets full observations
 
     class depth:
         use_camera = False
@@ -71,6 +75,6 @@ class GO2BaselineCfgPPO(LeggedRobotCfgPPO):
         experiment_name = 'go2_baseline'
         algorithm_class_name = 'PPO'
         policy_class_name = 'ActorCritic'
-        max_iterations = 15000
+        max_iterations = 10000
         save_interval = 1000
         use_wandb = True

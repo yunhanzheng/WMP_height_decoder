@@ -497,6 +497,13 @@ class LeggedRobot(BaseTask):
                 self.obs_buf = self.privileged_obs_buf[:, 6:]
             elif self.num_obs == self.num_privileged_obs - 3:
                 self.obs_buf = self.privileged_obs_buf[:, 3:]
+            elif hasattr(self.cfg.env, 'height_dim') and self.cfg.terrain.measure_heights:
+                # go2_baseline style: actor gets base_lin_vel + proprioception + heightmap + actions
+                # obs_with_vel layout: lin_vel(3) + ang_vel(3) + gravity(3) + commands(3) + dof_pos(12) + dof_vel(12) + actions(12) = 48
+                # We want: lin_vel(3) + ang_vel(3) + gravity(3) + commands(3) + dof_pos(12) + dof_vel(12) + heightmap(187) + actions(12)
+                prop_with_vel = obs_with_vel[:, :36]  # lin_vel(3) + ang_vel(3) + gravity(3) + commands(3) + dof_pos(12) + dof_vel(12)
+                actor_heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - self.cfg.normalization.base_height - self.measured_heights, -1, 1.) * self.obs_scales.height_measurements
+                self.obs_buf = torch.cat((prop_with_vel, actor_heights, self.actions), dim=-1)
             else:
                 self.obs_buf = torch.clone(self.privileged_obs_buf)
         else:
