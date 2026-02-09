@@ -92,6 +92,11 @@ def play(args):
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
     env_cfg.commands.ranges.heading = [0.0, 0.0]
 
+    # Ghost visualization flag (uses debug drawing, doesn't affect physics)
+    VISUALIZE_GHOST = getattr(args, 'visualize_ghost', False)
+    if VISUALIZE_GHOST:
+        print("Ghost robot visualization enabled (debug drawing mode)")
+
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     _, _ = env.reset()
@@ -268,6 +273,19 @@ def play(args):
                 wm_feature = world_model.dynamics.get_deter_feat(wm_latent)
                 wm_is_first[:] = 0
 
+                # Ghost robot visualization from decoder output
+                if VISUALIZE_GHOST:
+                    # Get full feature for decoder
+                    wm_feat_full = world_model.dynamics.get_feat(wm_latent)
+                    # Decode proprioception
+                    decoded = world_model.heads["decoder"](wm_feat_full)
+                    if "prop" in decoded:
+                        decoded_prop = decoded["prop"].mode()
+                        # prop layout: ang_vel(3) + gravity(3) + commands(3) + dof_pos(12) + dof_vel(12)
+                        decoded_dof_pos = decoded_prop[:, 9:21]  # dof_pos at indices 9:21
+                        decoded_dof_vel = decoded_prop[:, 21:33]  # dof_vel at indices 21:33
+                        env.draw_ghost_robot(decoded_dof_pos)
+
         if use_world_model:
             history = trajectory_history.flatten(1).to(env.device)
             actions = policy(obs.detach(), history.detach(), wm_feature.detach())
@@ -287,6 +305,9 @@ def play(args):
 
 
         obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
+
+        if SLOW_MOTION:
+            time.sleep(0.05)
 
         not_dones *= (~dones)
         total_reward += torch.mean(rews * not_dones)
@@ -368,6 +389,7 @@ if __name__ == '__main__':
     EXPORT_POLICY = False
     RECORD_FRAMES = False
     MOVE_CAMERA = True
+    SLOW_MOTION = False
     args = get_args()
     args.rl_device = args.sim_device
     play(args)

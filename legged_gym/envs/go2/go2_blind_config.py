@@ -2,6 +2,9 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 from legged_gym.envs.go2.go2_base import GO2BaseCfg
 
 class GO2BlindCfg(GO2BaseCfg):
+    class asset(GO2BaseCfg.asset):
+        visualize_ghost = False  # Show ghost robot from decoder output
+
     class env(LeggedRobotCfg.env):
         num_envs = 4096
         include_history_steps = None  # Number of steps of history to include.
@@ -64,7 +67,7 @@ class GO2BlindCfgPPO( LeggedRobotCfgPPO ):
         experiment_name = 'go2_blind'
         algorithm_class_name = 'PPOWMP'
         policy_class_name = 'ActorCritic'
-        max_iterations = 15000  # number of policy updates
+        max_iterations = 10000  # number of policy updates
         save_interval = 1000
         use_wandb = True
 

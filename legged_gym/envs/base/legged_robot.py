@@ -172,7 +172,11 @@ class LeggedRobot(BaseTask):
                 self.torques = self.torques * torch_rand_float(rng[0], rng[1], self.torques.shape, device=self.device)
 
 
-            self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
+            # Use full tensor when ghost actors exist
+            if getattr(self, 'visualize_ghost', False):
+                self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques_full))
+            else:
+                self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
             self.gym.simulate(self.sim)
             # if self.device == 'cpu':
             self.gym.fetch_results(self.sim, True)
@@ -721,10 +725,17 @@ class LeggedRobot(BaseTask):
         self.dof_pos[env_ids] = self.default_dof_pos * torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof), device=self.device)
         self.dof_vel[env_ids] = 0.
 
-        env_ids_int32 = env_ids.to(dtype=torch.int32)
-        self.gym.set_dof_state_tensor_indexed(self.sim,
-                                              gymtorch.unwrap_tensor(self.dof_state),
-                                              gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+        # Convert env_ids to actor indices for tensor API
+        if getattr(self, 'visualize_ghost', False):
+            actor_ids_int32 = (env_ids * 2).to(dtype=torch.int32)  # Real actors at 0, 2, 4, ...
+            self.gym.set_dof_state_tensor_indexed(self.sim,
+                                                  gymtorch.unwrap_tensor(self.dof_state_all),
+                                                  gymtorch.unwrap_tensor(actor_ids_int32), len(actor_ids_int32))
+        else:
+            env_ids_int32 = env_ids.to(dtype=torch.int32)
+            self.gym.set_dof_state_tensor_indexed(self.sim,
+                                                  gymtorch.unwrap_tensor(self.dof_state),
+                                                  gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
     def _reset_dofs_amp(self, env_ids, frames):
         """ Resets DOF position and velocities of selected environmments
@@ -737,10 +748,18 @@ class LeggedRobot(BaseTask):
         """
         self.dof_pos[env_ids] = AMPLoader.get_joint_pose_batch(frames)
         self.dof_vel[env_ids] = AMPLoader.get_joint_vel_batch(frames)
-        env_ids_int32 = env_ids.to(dtype=torch.int32)
-        self.gym.set_dof_state_tensor_indexed(self.sim,
-                                              gymtorch.unwrap_tensor(self.dof_state),
-                                              gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+
+        # Convert env_ids to actor indices for tensor API
+        if getattr(self, 'visualize_ghost', False):
+            actor_ids_int32 = (env_ids * 2).to(dtype=torch.int32)
+            self.gym.set_dof_state_tensor_indexed(self.sim,
+                                                  gymtorch.unwrap_tensor(self.dof_state_all),
+                                                  gymtorch.unwrap_tensor(actor_ids_int32), len(actor_ids_int32))
+        else:
+            env_ids_int32 = env_ids.to(dtype=torch.int32)
+            self.gym.set_dof_state_tensor_indexed(self.sim,
+                                                  gymtorch.unwrap_tensor(self.dof_state),
+                                                  gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
     def _reset_root_states(self, env_ids):
         """ Resets ROOT states position and velocities of selected environmments
@@ -791,10 +810,18 @@ class LeggedRobot(BaseTask):
 
         # base velocities
         self.root_states[env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6), device=self.device) # [7:10]: lin vel, [10:13]: ang vel
-        env_ids_int32 = env_ids.to(dtype=torch.int32)
-        self.gym.set_actor_root_state_tensor_indexed(self.sim,
-                                                     gymtorch.unwrap_tensor(self.root_states),
-                                                     gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+
+        # Convert env_ids to actor indices for tensor API
+        if getattr(self, 'visualize_ghost', False):
+            actor_ids_int32 = (env_ids * 2).to(dtype=torch.int32)  # Real actors at 0, 2, 4, ...
+            self.gym.set_actor_root_state_tensor_indexed(self.sim,
+                                                         gymtorch.unwrap_tensor(self.root_states_all),
+                                                         gymtorch.unwrap_tensor(actor_ids_int32), len(actor_ids_int32))
+        else:
+            env_ids_int32 = env_ids.to(dtype=torch.int32)
+            self.gym.set_actor_root_state_tensor_indexed(self.sim,
+                                                         gymtorch.unwrap_tensor(self.root_states),
+                                                         gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
     def _reset_root_states_amp(self, env_ids, frames):
         """ Resets ROOT states position and velocities of selected environmments
@@ -812,17 +839,27 @@ class LeggedRobot(BaseTask):
         self.root_states[env_ids, 7:10] = quat_rotate(root_orn, AMPLoader.get_linear_vel_batch(frames))
         self.root_states[env_ids, 10:13] = quat_rotate(root_orn, AMPLoader.get_angular_vel_batch(frames))
 
-        env_ids_int32 = env_ids.to(dtype=torch.int32)
-        self.gym.set_actor_root_state_tensor_indexed(self.sim,
-                                                     gymtorch.unwrap_tensor(self.root_states),
-                                                     gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+        # Convert env_ids to actor indices for tensor API
+        if getattr(self, 'visualize_ghost', False):
+            actor_ids_int32 = (env_ids * 2).to(dtype=torch.int32)
+            self.gym.set_actor_root_state_tensor_indexed(self.sim,
+                                                         gymtorch.unwrap_tensor(self.root_states_all),
+                                                         gymtorch.unwrap_tensor(actor_ids_int32), len(actor_ids_int32))
+        else:
+            env_ids_int32 = env_ids.to(dtype=torch.int32)
+            self.gym.set_actor_root_state_tensor_indexed(self.sim,
+                                                         gymtorch.unwrap_tensor(self.root_states),
+                                                         gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
     def _push_robots(self):
         """ Random pushes the robots. Emulates an impulse by setting a randomized base velocity.
         """
         max_vel = self.cfg.domain_rand.max_push_vel_xy
         self.root_states[:, 7:9] = torch_rand_float(-max_vel, max_vel, (self.num_envs, 2), device=self.device) # lin vel x/y
-        self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states))
+        if getattr(self, 'visualize_ghost', False):
+            self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states_all))
+        else:
+            self.gym.set_actor_root_state_tensor(self.sim, gymtorch.unwrap_tensor(self.root_states))
 
 
     def update_reward_curriculum(self, current_iter):
@@ -925,13 +962,35 @@ class LeggedRobot(BaseTask):
         self.gym.refresh_rigid_body_state_tensor(self.sim)
 
         # create some wrapper tensors for different slices
-        self.root_states = gymtorch.wrap_tensor(actor_root_state)
-        self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
-        self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
-        self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
+        self.root_states_all = gymtorch.wrap_tensor(actor_root_state)
+        self.dof_state_all = gymtorch.wrap_tensor(dof_state_tensor)
+
+        # Account for ghost actors when slicing tensors
+        if getattr(self, 'visualize_ghost', False):
+            # With ghost actors: 2 actors per env, extract only real robot states
+            self.num_actors_per_env = 2
+            # Use select() to get views that share memory with original tensors
+            root_states_reshaped = self.root_states_all.view(self.num_envs, self.num_actors_per_env, 13)
+            self.root_states = root_states_reshaped.select(1, 0)  # Select actor 0 (real robot)
+            dof_state_reshaped = self.dof_state_all.view(self.num_envs, self.num_actors_per_env, self.num_dof, 2)
+            self.dof_state = dof_state_reshaped.select(1, 0)  # Select actor 0 (real robot)
+        else:
+            # Normal case: 1 actor per env
+            self.num_actors_per_env = 1
+            self.root_states = self.root_states_all
+            self.dof_state = self.dof_state_all.view(self.num_envs, self.num_dof, 2)
+
+        self.dof_pos = self.dof_state[..., 0]
+        self.dof_vel = self.dof_state[..., 1]
         self.base_quat = self.root_states[:, 3:7]
 
-        self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
+        contact_forces_all = gymtorch.wrap_tensor(net_contact_forces)
+        if getattr(self, 'visualize_ghost', False):
+            # With ghost actors: extract only real robot contact forces
+            contact_forces_reshaped = contact_forces_all.view(self.num_envs, self.num_actors_per_env, self.num_bodies, 3)
+            self.contact_forces = contact_forces_reshaped.select(1, 0)  # Select actor 0 (real robot)
+        else:
+            self.contact_forces = contact_forces_all.view(self.num_envs, -1, 3)  # shape: num_envs, num_bodies, xyz axis
 
 
         sensor_tensor = self.gym.acquire_force_sensor_tensor(self.sim)
@@ -939,9 +998,15 @@ class LeggedRobot(BaseTask):
         force_sensor_readings = gymtorch.wrap_tensor(sensor_tensor)
         self.sensor_forces = force_sensor_readings.view(self.num_envs, 4, 6)[..., :3]
 
-        self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_state)
-        self.rigid_body_pos = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[..., 0:3]
-        self.rigid_body_lin_vel = self.rigid_body_states.view(self.num_envs, self.num_bodies, 13)[...,7:10]
+        self.rigid_body_states_all = gymtorch.wrap_tensor(rigid_body_state)
+        if getattr(self, 'visualize_ghost', False):
+            # With ghost actors: extract only real robot rigid body states
+            rigid_body_reshaped = self.rigid_body_states_all.view(self.num_envs, self.num_actors_per_env, self.num_bodies, 13)
+            self.rigid_body_states = rigid_body_reshaped.select(1, 0)  # Select actor 0 (real robot)
+        else:
+            self.rigid_body_states = self.rigid_body_states_all.view(self.num_envs, self.num_bodies, 13)
+        self.rigid_body_pos = self.rigid_body_states[..., 0:3]
+        self.rigid_body_lin_vel = self.rigid_body_states[..., 7:10]
 
 
         # initialize some data used later on
@@ -950,7 +1015,13 @@ class LeggedRobot(BaseTask):
         self.noise_scale_vec = self._get_noise_scale_vec(self.cfg)
         self.gravity_vec = to_torch(get_axis_params(-1., self.up_axis_idx), device=self.device).repeat((self.num_envs, 1))
         self.forward_vec = to_torch([1., 0., 0.], device=self.device).repeat((self.num_envs, 1))
-        self.torques = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+
+        # Create torques tensor - need full size for Isaac Gym API when ghost actors exist
+        if getattr(self, 'visualize_ghost', False):
+            self.torques_full = torch.zeros(self.num_envs, self.num_actors_per_env, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
+            self.torques = self.torques_full[:, 0, :]  # View of just real robot torques
+        else:
+            self.torques = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.p_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.d_gains = torch.zeros(self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
         self.actions = torch.zeros(self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
@@ -1007,6 +1078,12 @@ class LeggedRobot(BaseTask):
                                             self.cfg.depth.resized[0],
                                             self.cfg.depth.resized[1]).to(self.device)
 
+        # Ghost robot state buffers (for visualization)
+        if getattr(self, 'visualize_ghost', False):
+            self.ghost_dof_state = torch.zeros(self.num_envs, self.num_dof, 2, device=self.device)
+            self.ghost_dof_pos = self.ghost_dof_state[..., 0]
+            self.ghost_dof_vel = self.ghost_dof_state[..., 1]
+
     def compute_randomized_gains(self, num_envs):
         p_mult = torch_rand_float(self.cfg.domain_rand.stiffness_multiplier_range[0], self.cfg.domain_rand.stiffness_multiplier_range[1],
                                   (num_envs, self.num_actions), device=self.device)
@@ -1014,6 +1091,114 @@ class LeggedRobot(BaseTask):
                                   (num_envs, self.num_actions), device=self.device)
         return p_mult * self.p_gains, d_mult * self.d_gains
 
+    def draw_ghost_robot(self, decoded_dof_pos):
+        """Draw ghost robot visualization using debug lines.
+
+        Args:
+            decoded_dof_pos: Decoded DOF positions (scaled, shape: [num_envs, 12])
+        """
+        if self.headless:
+            return
+
+        self.gym.clear_lines(self.viewer)
+
+        raw_dof_pos = decoded_dof_pos / self.obs_scales.dof_pos + self.default_dof_pos
+        base_pos = self.root_states[:, :3]
+        base_quat = self.root_states[:, 3:7]
+
+        l_up = 0.2
+        l_low = 0.2
+        l_hip_base = 0.08505
+        hip_offsets = HIP_OFFSETS.to(self.device)
+
+        for i in range(self.num_envs):
+            for leg in range(4):
+                angles = raw_dof_pos[i, leg*3:(leg+1)*3]
+                theta_ab, theta_hip, theta_knee = angles[0], angles[1], angles[2]
+                l_hip_sign = (-1) ** leg
+                l_hip = l_hip_base * l_hip_sign
+
+                hip_base = hip_offsets[leg]
+                hip_pos_local = torch.tensor([
+                    hip_base[0],
+                    hip_base[1] + l_hip * torch.cos(theta_ab),
+                    hip_base[2] - l_hip * torch.sin(theta_ab)
+                ], device=self.device)
+
+                knee_offset = torch.tensor([
+                    -l_up * torch.sin(theta_hip),
+                    l_hip * torch.cos(theta_ab) - l_up * torch.cos(theta_hip) * torch.sin(theta_ab),
+                    -l_hip * torch.sin(theta_ab) - l_up * torch.cos(theta_hip) * torch.cos(theta_ab)
+                ], device=self.device)
+                knee_pos_local = torch.tensor([hip_base[0], hip_base[1], hip_base[2]], device=self.device) + knee_offset
+
+                theta_total = theta_hip + theta_knee
+                foot_offset = torch.tensor([
+                    -l_up * torch.sin(theta_hip) - l_low * torch.sin(theta_total),
+                    l_hip * torch.cos(theta_ab) - (l_up * torch.cos(theta_hip) + l_low * torch.cos(theta_total)) * torch.sin(theta_ab),
+                    -l_hip * torch.sin(theta_ab) - (l_up * torch.cos(theta_hip) + l_low * torch.cos(theta_total)) * torch.cos(theta_ab)
+                ], device=self.device)
+                foot_pos_local = torch.tensor([hip_base[0], hip_base[1], hip_base[2]], device=self.device) + foot_offset
+
+                hip_world = quat_apply(base_quat[i].unsqueeze(0), hip_pos_local.unsqueeze(0)).squeeze() + base_pos[i]
+                knee_world = quat_apply(base_quat[i].unsqueeze(0), knee_pos_local.unsqueeze(0)).squeeze() + base_pos[i]
+                foot_world = quat_apply(base_quat[i].unsqueeze(0), foot_pos_local.unsqueeze(0)).squeeze() + base_pos[i]
+
+                hip_np = hip_world.detach().cpu().numpy()
+                knee_np = knee_world.detach().cpu().numpy()
+                foot_np = foot_world.detach().cpu().numpy()
+
+                color = gymapi.Vec3(0.2, 0.4, 0.8)
+                self.gym.add_lines(self.viewer, self.envs[i], 1,
+                    [hip_np[0], hip_np[1], hip_np[2], knee_np[0], knee_np[1], knee_np[2]], [color.x, color.y, color.z])
+                self.gym.add_lines(self.viewer, self.envs[i], 1,
+                    [knee_np[0], knee_np[1], knee_np[2], foot_np[0], foot_np[1], foot_np[2]], [color.x, color.y, color.z])
+
+                sphere_geom = gymutil.WireframeSphereGeometry(0.02, 6, 6, None, color=(0.2, 0.4, 0.8))
+                gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i],
+                    gymapi.Transform(gymapi.Vec3(*hip_np), r=None))
+                gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i],
+                    gymapi.Transform(gymapi.Vec3(*knee_np), r=None))
+                gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i],
+                    gymapi.Transform(gymapi.Vec3(*foot_np), r=None))
+
+    def update_ghost_robot(self, decoded_dof_pos, decoded_dof_vel):
+        """Update ghost robot DOFs from decoder output using tensor API.
+
+        Args:
+            decoded_dof_pos: Decoded DOF positions (scaled, shape: [num_envs, 12])
+            decoded_dof_vel: Decoded DOF velocities (scaled, shape: [num_envs, 12])
+        """
+        if not getattr(self, 'visualize_ghost', False):
+            return
+
+        # Move tensors to device if needed
+        if decoded_dof_pos.device != self.device:
+            decoded_dof_pos = decoded_dof_pos.to(self.device)
+        if decoded_dof_vel.device != self.device:
+            decoded_dof_vel = decoded_dof_vel.to(self.device)
+
+        # Undo observation scaling to get raw values
+        raw_dof_pos = decoded_dof_pos / self.obs_scales.dof_pos + self.default_dof_pos
+        raw_dof_vel = decoded_dof_vel / self.obs_scales.dof_vel
+
+        # Update ghost DOF states in the full tensor (ghost is actor index 1 in each env)
+        # dof_state_all shape: (num_envs * num_actors_per_env * num_dof, 2) flat
+        dof_state_reshaped = self.dof_state_all.view(self.num_envs, self.num_actors_per_env, self.num_dof, 2)
+        dof_state_reshaped[:, 1, :, 0] = raw_dof_pos
+        dof_state_reshaped[:, 1, :, 1] = raw_dof_vel
+
+        # Sync ghost base position to match real robot
+        self.sync_ghost_base()
+
+        # Set DOF states for ghost actors
+        ghost_actor_indices = torch.arange(self.num_envs, dtype=torch.int32, device=self.device) * 2 + 1
+        self.gym.set_dof_state_tensor_indexed(
+            self.sim,
+            gymtorch.unwrap_tensor(self.dof_state_all),
+            gymtorch.unwrap_tensor(ghost_actor_indices),
+            len(ghost_actor_indices)
+        )
 
     def foot_position_in_hip_frame(self, angles, l_hip_sign=1):
         theta_ab, theta_hip, theta_knee = angles[:, 0], angles[:, 1], angles[:, 2]
@@ -1177,6 +1362,26 @@ class LeggedRobot(BaseTask):
         dof_props_asset = self.gym.get_asset_dof_properties(robot_asset)
         rigid_shape_props_asset = self.gym.get_asset_rigid_shape_properties(robot_asset)
 
+        # Ghost actor visualization is disabled - causes simulation instability
+        # Use debug drawing visualization instead (handled in play.py)
+        self.visualize_ghost = False
+        if False:  # Ghost actor disabled
+            ghost_asset_options = gymapi.AssetOptions()
+            ghost_asset_options.default_dof_drive_mode = 1  # Position control mode
+            ghost_asset_options.collapse_fixed_joints = self.cfg.asset.collapse_fixed_joints
+            ghost_asset_options.replace_cylinder_with_capsule = self.cfg.asset.replace_cylinder_with_capsule
+            ghost_asset_options.flip_visual_attachments = self.cfg.asset.flip_visual_attachments
+            ghost_asset_options.fix_base_link = False  # Allow ghost base to follow real robot
+            ghost_asset_options.density = 0.001  # Very low density
+            ghost_asset_options.angular_damping = 1000.  # Very high damping
+            ghost_asset_options.linear_damping = 1000.   # Very high damping
+            ghost_asset_options.max_angular_velocity = 1000.
+            ghost_asset_options.max_linear_velocity = 1000.
+            ghost_asset_options.armature = self.cfg.asset.armature
+            ghost_asset_options.thickness = self.cfg.asset.thickness
+            ghost_asset_options.disable_gravity = True  # Ghost is not affected by physics
+            self.ghost_asset = self.gym.load_asset(self.sim, asset_root, asset_file, ghost_asset_options)
+
         # save body names from the asset
         body_names = self.gym.get_asset_rigid_body_names(robot_asset)
         self.dof_names = self.gym.get_asset_dof_names(robot_asset)
@@ -1212,6 +1417,7 @@ class LeggedRobot(BaseTask):
         env_lower = gymapi.Vec3(0., 0., 0.)
         env_upper = gymapi.Vec3(0., 0., 0.)
         self.actor_handles = []
+        self.ghost_actor_handles = []
         self.envs = []
         self.cam_handles = []
         #for domain randomization
@@ -1248,6 +1454,25 @@ class LeggedRobot(BaseTask):
             self.gym.set_actor_rigid_body_properties(env_handle, anymal_handle, body_props, recomputeInertia=True)
             self.envs.append(env_handle)
             self.actor_handles.append(anymal_handle)
+
+            # Create ghost actor for visualization (if enabled)
+            if self.visualize_ghost:
+                # Create ghost at same position as real robot
+                ghost_handle = self.gym.create_actor(
+                    env_handle, self.ghost_asset, start_pose, "ghost", i,
+                    -1,  # Collision group -1 disables all collisions
+                    0    # Filter mask 0 - no collisions with any group
+                )
+                self.ghost_actor_handles.append(ghost_handle)
+
+                # Set ghost color to semi-transparent blue
+                num_ghost_bodies = self.gym.get_actor_rigid_body_count(env_handle, ghost_handle)
+                for j in range(num_ghost_bodies):
+                    self.gym.set_rigid_body_color(
+                        env_handle, ghost_handle, j,
+                        gymapi.MESH_VISUAL,
+                        gymapi.Vec3(0.2, 0.4, 0.8)  # Blue color
+                    )
 
             if(self.cfg.depth.use_camera and i in self.depth_index):
                 self.attach_camera(i, env_handle, anymal_handle)
