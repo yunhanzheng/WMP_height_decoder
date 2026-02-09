@@ -107,9 +107,9 @@ def parse_sim_params(args, cfg):
 def get_load_path(root, load_run=-1, checkpoint=-1):
     try:
         runs = os.listdir(root)
-        #TODO sort by date to handle change of month
-        runs.sort()
         if 'exported' in runs: runs.remove('exported')
+        # Sort by modification time to get the most recent run
+        runs.sort(key=lambda x: os.path.getmtime(os.path.join(root, x)))
         last_run = os.path.join(root, runs[-1])
     except:
         raise ValueError("No runs in this directory: " + root)
@@ -171,6 +171,7 @@ def get_args():
         {"name": "--terrain", "type": str, "default": "climb",
          "help": 'Only for play'},
         {"name": "--wm_device", "type": str, "default": "None", "help": 'World model device. Overrides config file in dreamer/config.yaml if provided'},
+        {"name": "--visualize-ghost", "action": "store_true", "default": False, "help": "Show ghost robot from decoder output"},
 
     ]
     # parse arguments
