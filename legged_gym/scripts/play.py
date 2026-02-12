@@ -46,6 +46,7 @@ from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Log
 
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
 
 
 def play(args):
@@ -225,8 +226,6 @@ def play(args):
         print(f"  short_history_length: {short_history_length}")
         print(f"  long_history_length: {long_history_length}")
 
-    # Verify observation dimensions match expected
-    print(f"Observation shape: {obs.shape}, Expected: [{env.num_envs}, {env.num_obs}]")
     if obs.shape[-1] != env.num_obs:
         print(f"WARNING: Observation dimension mismatch! Got {obs.shape[-1]}, expected {env.num_obs}")
         print(f"This may cause incorrect behavior. Check domain_rand settings in play.py")
@@ -257,8 +256,12 @@ def play(args):
                                           device=world_model.device)
 
         wm_feature = torch.zeros((env.num_envs, ppo_runner.wm_feature_dim), device=env.device)
+
+        # Initialize latent history for visualization
+        latent_history = []
     else:
         wm_feature = None
+        latent_history = None
 
     total_reward = 0
     not_dones = torch.ones((env.num_envs,), device=env.device)
@@ -272,6 +275,10 @@ def play(args):
                 wm_latent, _ = world_model.dynamics.obs_step(wm_latent, wm_action, wm_embed, wm_obs["is_first"], sample=True)
                 wm_feature = world_model.dynamics.get_deter_feat(wm_latent)
                 wm_is_first[:] = 0
+
+                # Collect latent for visualization (use robot_index for single env visualization)
+                if VISUALIZE_LATENT:
+                    latent_history.append(wm_feature[robot_index].detach().cpu().numpy())
 
                 # Ghost robot visualization from decoder output
                 if VISUALIZE_GHOST:
@@ -385,11 +392,47 @@ def play(args):
 
     print('total reward:', total_reward)
 
+    # Visualize latent space as heatmap
+    if use_world_model and VISUALIZE_LATENT and latent_history:
+        latent_array = np.array(latent_history)  # Shape: (num_steps, latent_dim)
+        num_steps, latent_dim = latent_array.shape
+
+        print(f"Latent visualization: {num_steps} steps, {latent_dim} dimensions")
+
+        # Create heatmap: x-axis = steps, y-axis = dimensions
+        fig, ax = plt.subplots(figsize=(14, 8))
+
+        # Transpose so dimensions are on y-axis and steps on x-axis
+        latent_transposed = latent_array.T  # Shape: (latent_dim, num_steps)
+
+        # Use same color scale for all dimensions
+        vmin, vmax = latent_transposed.min(), latent_transposed.max()
+
+        im = ax.imshow(latent_transposed, aspect='auto', cmap='viridis',
+                       vmin=vmin, vmax=vmax, interpolation='nearest')
+
+        ax.set_xlabel('Step')
+        ax.set_ylabel('Latent Dimension')
+        ax.set_title('World Model Latent Space Over Time')
+
+        # Add colorbar
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label('Latent Value')
+
+        # Save figure
+        save_path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'latent_heatmap.png')
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Saved latent heatmap to: {save_path}")
+
+        plt.show()
+
 if __name__ == '__main__':
     EXPORT_POLICY = False
     RECORD_FRAMES = False
     MOVE_CAMERA = True
     SLOW_MOTION = False
+    VISUALIZE_LATENT = True  # Visualize world model latent space as heatmap
     args = get_args()
     args.rl_device = args.sim_device
     play(args)

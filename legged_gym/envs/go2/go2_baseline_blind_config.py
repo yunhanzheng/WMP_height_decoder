@@ -8,7 +8,7 @@ class GO2BaselineBlindCfg(GO2BaseCfg):
         prop_dim = 33 # proprioception
         action_dim = 12
         privileged_dim = 24 + 26 + 3  # privileged_obs[:,:privileged_dim] is the privileged information in privileged_obs, include 3-dim base linear vel
-        height_dim = 187  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs
+        height_dim = 341  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs
         num_observations = prop_dim + privileged_dim + height_dim + action_dim
         num_privileged_obs = prop_dim + privileged_dim + height_dim + action_dim
         privileged_obs = True  # Disable extra privileged observations (domain randomization params)
@@ -53,7 +53,7 @@ class GO2BaselineBlindCfgPPO( LeggedRobotCfgPPO ):
         experiment_name = 'go2_baseline_blind'
         algorithm_class_name = 'PPO'
         policy_class_name = 'ActorCritic'
-        max_iterations = 20000  # number of policy updates
+        max_iterations = 10000  # number of policy updates
         save_interval = 1000
         use_wandb = True
         resume = False  # Changed to False to start training from scratch

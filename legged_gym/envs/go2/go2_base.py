@@ -15,8 +15,14 @@ class GO2BaseCfg(LeggedRobotCfg):
         num_cols = 10  # number of terrain cols (types)
         measure_heights = True
         max_init_terrain_level = 5  # starting curriculum state
-
         measured_points_x = [
+            -1.5,
+            -1.4,
+            -1.3,
+            -1.2,
+            -1.1,
+            -1.0,
+            -0.9,
             -0.8,
             -0.7,
             -0.6,
@@ -34,7 +40,14 @@ class GO2BaseCfg(LeggedRobotCfg):
             0.6,
             0.7,
             0.8,
-        ]  # 1mx1.6m rectangle (without center line)
+            0.9,
+            1.0,
+            1.1,
+            1.2,
+            1.3,
+            1.4,
+            1.5,
+        ]
         measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
         map_path = None
         num_points = len(measured_points_x) * len(measured_points_y)
@@ -152,13 +165,13 @@ class GO2BaseCfg(LeggedRobotCfg):
             tracking_ang_vel = 0.5
             lin_vel_z = -0.1
             ang_vel_xy = -0.01
-            orientation = -0.01
-            dof_acc = -2.5e-7
+            orientation = -0.1
+            dof_acc = -5e-7
             joint_power = -2e-5
             base_height = -0.01
             foot_clearance = -0.0
             action_rate = -0.0002
-            smoothness = -0.0001
+            smoothness = -0.0002
             feet_air_time = 0.01
             collision = -0.1
             feet_stumble = -0.1

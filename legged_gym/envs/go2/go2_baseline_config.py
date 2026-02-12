@@ -5,9 +5,44 @@ from legged_gym.envs.go2.go2_base import GO2BaseCfg
 class GO2BaselineCfg(GO2BaseCfg):
     """
     Configuration for GO2 robot baseline with asymmetric actor-critic.
-    Actor receives: base_lin_vel(3) + proprioception(33) + heightmap(187) + actions(12) = 235
-    Critic receives: full observations including privileged information (285).
+    Actor receives: base_lin_vel(3) + proprioception(33) + heightmap(341) + actions(12) = 389
+    Critic receives: full observations including privileged information (439).
     """
+
+    class terrain(GO2BaseCfg.terrain):
+        measured_points_x = [
+            -1.5,
+            -1.4,
+            -1.3,
+            -1.2,
+            -1.1,
+            -1.0,
+            -0.9,
+            -0.8,
+            -0.7,
+            -0.6,
+            -0.5,
+            -0.4,
+            -0.3,
+            -0.2,
+            -0.1,
+            0.0,
+            0.1,
+            0.2,
+            0.3,
+            0.4,
+            0.5,
+            0.6,
+            0.7,
+            0.8,
+            0.9,
+            1.0,
+            1.1,
+            1.2,
+            1.3,
+            1.4,
+            1.5,
+        ]  # 1mx3.0m rectangle (without center line)
 
     class env(LeggedRobotCfg.env):
         num_envs = 4096
@@ -18,7 +53,7 @@ class GO2BaselineCfg(GO2BaseCfg):
         action_dim = 12
         base_lin_vel_dim = 3  # base linear velocity
         privileged_dim = 24 + 26 + 3  # friction, mass, com + DR params + base linear vel
-        height_dim = 187  # heightmap
+        height_dim = 341  # heightmap (31 x 11 points)
 
         # Asymmetric actor-critic observations
         # Actor: proprioception + base linear vel + heightmap + action

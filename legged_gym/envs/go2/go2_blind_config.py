@@ -11,7 +11,7 @@ class GO2BlindCfg(GO2BaseCfg):
         prop_dim = 33 # proprioception
         action_dim = 12
         privileged_dim = 24 + 26 + 3  # privileged_obs[:,:privileged_dim] is the privileged information in privileged_obs, include 3-dim base linear vel
-        height_dim = 187  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs
+        height_dim = 341  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs
         num_observations = prop_dim + privileged_dim + height_dim + action_dim
         num_privileged_obs = prop_dim + privileged_dim + height_dim + action_dim
         forward_height_dim = 0 # for depth image prediction
@@ -29,7 +29,7 @@ class GO2BlindCfg(GO2BaseCfg):
         z_angle = [0, 0]
         x_angle = [0, 0]
 
-        update_interval = 5  # 5 works without retraining, 8 worse
+        update_interval = 2  # 5 works without retraining, 8 worse
 
         original = (64, 64)
         resized = (64, 64)
