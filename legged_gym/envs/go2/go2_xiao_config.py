@@ -17,7 +17,7 @@ class GO2XiaoCfg(GO2BaseCfg):
         prop_dim = 33  # proprioception: ang_vel(3) + gravity(3) + commands(3) + dof_pos(12) + dof_vel(12)
         action_dim = 12
         privileged_dim = 24 + 26 + 3  # friction, mass, com + DR params + base linear vel
-        height_dim = 341  # heightmap
+        height_dim = 187  # heightmap
 
         # Standard observation layout (same as go2_blind)
         num_observations = prop_dim + privileged_dim + height_dim + action_dim
@@ -88,6 +88,4 @@ class GO2XiaoCfgPPO(LeggedRobotCfgPPO):
         experiment_name = 'go2_xiao'
         algorithm_class_name = 'PPO'
         policy_class_name = 'ActorCriticLongShort'
-        max_iterations = 10000
-        save_interval = 1000
         use_wandb = True

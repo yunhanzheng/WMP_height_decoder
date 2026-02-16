@@ -291,11 +291,11 @@ class LeggedRobotCfgPPO(BaseConfig):
         policy_class_name = 'ActorCritic'
         algorithm_class_name = 'PPO'
         num_steps_per_env = 24 # per iteration
-        max_iterations = 1500 # number of policy updates
+        max_iterations = 15000 # number of policy updates
         use_wandb = True
 
         # logging
-        save_interval = 200 # check for potential saves every this many iterations
+        save_interval = 1000 # check for potential saves every this many iterations
         experiment_name = 'test'
         run_name = 'trot'
         # load and resume

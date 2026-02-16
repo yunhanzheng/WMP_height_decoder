@@ -16,13 +16,6 @@ class GO2BaseCfg(LeggedRobotCfg):
         measure_heights = True
         max_init_terrain_level = 5  # starting curriculum state
         measured_points_x = [
-            -1.5,
-            -1.4,
-            -1.3,
-            -1.2,
-            -1.1,
-            -1.0,
-            -0.9,
             -0.8,
             -0.7,
             -0.6,
@@ -39,14 +32,7 @@ class GO2BaseCfg(LeggedRobotCfg):
             0.5,
             0.6,
             0.7,
-            0.8,
-            0.9,
-            1.0,
-            1.1,
-            1.2,
-            1.3,
-            1.4,
-            1.5,
+            0.8
         ]
         measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
         map_path = None
@@ -160,18 +146,18 @@ class GO2BaseCfg(LeggedRobotCfg):
     class rewards(LeggedRobotCfg.rewards):
         reward_curriculum = False
         class scales:
-            termination = -20
+            termination = -20.0
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
             lin_vel_z = -0.1
             ang_vel_xy = -0.01
             orientation = -0.1
-            dof_acc = -5e-7
+            dof_acc = -1e-7
             joint_power = -2e-5
             base_height = -0.01
             foot_clearance = -0.0
             action_rate = -0.0002
-            smoothness = -0.0002
+            smoothness = -0.00005
             feet_air_time = 0.01
             collision = -0.1
             feet_stumble = -0.1

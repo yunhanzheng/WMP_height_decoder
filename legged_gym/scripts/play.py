@@ -58,7 +58,7 @@ def play(args):
     env_cfg.terrain.num_cols = 1
     env_cfg.terrain.curriculum = False
     env_cfg.terrain.difficulty = 0.1  # use 0.15 for stripe obstacle
-    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 
     # env_cfg.terrain.difficulty = 1.0  # use 0.15 for stripe obstacle
     # env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
@@ -276,9 +276,12 @@ def play(args):
                 wm_feature = world_model.dynamics.get_deter_feat(wm_latent)
                 wm_is_first[:] = 0
 
-                # Collect latent for visualization (use robot_index for single env visualization)
+                # Collect compressed deterministic state for visualization
+                # This is the output of wm_feature_encoder (512 -> 16) that gets passed to actor-critic
                 if VISUALIZE_LATENT:
-                    latent_history.append(wm_feature[robot_index].detach().cpu().numpy())
+                    with torch.no_grad():
+                        compressed_wm = ppo_runner.alg.actor_critic.wm_feature_encoder(wm_feature)
+                    latent_history.append(compressed_wm[robot_index].detach().cpu().numpy())
 
                 # Ghost robot visualization from decoder output
                 if VISUALIZE_GHOST:
@@ -397,7 +400,7 @@ def play(args):
         latent_array = np.array(latent_history)  # Shape: (num_steps, latent_dim)
         num_steps, latent_dim = latent_array.shape
 
-        print(f"Latent visualization: {num_steps} steps, {latent_dim} dimensions")
+        print(f"Compressed deterministic state visualization: {num_steps} steps, {latent_dim} dimensions")
 
         # Create heatmap: x-axis = steps, y-axis = dimensions
         fig, ax = plt.subplots(figsize=(14, 8))
@@ -413,7 +416,7 @@ def play(args):
 
         ax.set_xlabel('Step')
         ax.set_ylabel('Latent Dimension')
-        ax.set_title('World Model Latent Space Over Time')
+        ax.set_title('Compressed Deterministic State (wm_feature_encoder output) Over Time')
 
         # Add colorbar
         cbar = fig.colorbar(im, ax=ax)
@@ -432,7 +435,7 @@ if __name__ == '__main__':
     RECORD_FRAMES = False
     MOVE_CAMERA = True
     SLOW_MOTION = False
-    VISUALIZE_LATENT = True  # Visualize world model latent space as heatmap
+    VISUALIZE_LATENT = False  # Visualize world model latent space as heatmap
     args = get_args()
     args.rl_device = args.sim_device
     play(args)
