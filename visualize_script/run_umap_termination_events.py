@@ -1,13 +1,13 @@
 """
-Standalone script to generate UMAP visualization of world model recurrent states
-colored by termination, collision, and stumble events
+Standalone script to generate UMAP visualization of the compressed deterministic state
+(output of wm_feature_encoder, as given to actor-critic) colored by termination,
+collision, and stumble events.
 
 Usage:
     UMAP_NUM_STEPS=1000 python run_umap_termination_events.py --task=go2_blind --checkpoint=13000
 
 Environment Variables:
     UMAP_NUM_STEPS: Number of steps to collect (default: 1000)
-    UMAP_USE_FULL_STATE: Use full state (deter+stoch) if 'true' (default: false, deter only)
     UMAP_SAVE_PATH: Output file path (default: umap_termination_events.png)
     UMAP_N_NEIGHBORS: UMAP n_neighbors parameter (default: 15)
 """
@@ -41,14 +41,13 @@ def main():
     env_args = get_args()
 
     # Set visualization parameters
-    num_steps = int(os.environ.get('UMAP_NUM_STEPS', '1000'))
-    use_full_state = os.environ.get('UMAP_USE_FULL_STATE', 'false').lower() == 'true'
+    num_steps = int(os.environ.get('UMAP_NUM_STEPS', '230'))
     save_path = os.environ.get('UMAP_SAVE_PATH', 'umap_termination_events.png')
     n_neighbors = int(os.environ.get('UMAP_N_NEIGHBORS', '15'))
 
     print(f"\nVisualization settings:")
     print(f"  - num_steps: {num_steps}")
-    print(f"  - use_full_state: {use_full_state}")
+    print(f"  - state: compressed deterministic (wm_feature_encoder output)")
     print(f"  - color_by: termination, collision, stumble")
     print(f"  - save_path: {save_path}")
     print(f"  - n_neighbors: {n_neighbors}")
@@ -66,7 +65,6 @@ def main():
     env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
     env_cfg.noise.add_noise = False
-    env_cfg.depth.update_interval = 5  # Must match training config
     # Keep domain randomizations ENABLED but with fixed values to match training observation structure
     env_cfg.domain_rand.friction_range = [0.8, 0.8]  # Fixed value
     env_cfg.domain_rand.restitution_range = [0.0, 0.0]  # Fixed value
@@ -135,8 +133,7 @@ def main():
     )
 
     print(f"\nLoading checkpoint from: {checkpoint_path}")
-    print(f"Collecting {num_steps} steps of recurrent states...")
-    print(f"Using {'full state (deter + stoch)' if use_full_state else 'deterministic state only'}")
+    print(f"Collecting {num_steps} steps of compressed deterministic states...")
     print(f"Coloring by: termination (red), collision (orange), stumble (green)")
 
     # Import visualization module here (after isaacgym/torch imports are done)
@@ -147,7 +144,6 @@ def main():
         checkpoint_path=checkpoint_path,
         runner=runner,
         num_steps=num_steps,
-        use_deter_only=not use_full_state,
         save_path=save_path,
         n_neighbors=n_neighbors
     )

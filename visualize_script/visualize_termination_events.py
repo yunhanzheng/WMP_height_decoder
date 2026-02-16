@@ -9,15 +9,13 @@ import umap
 
 
 class TerminationEventsVisualizer:
-    """Visualizer that tracks termination, collision, and stumble events"""
+    """Visualizer that tracks termination, collision, and stumble events
 
-    def __init__(self, use_deter_only=True):
-        """
-        Args:
-            use_deter_only: If True, only use deterministic state for UMAP.
-                           If False, concatenate deterministic and stochastic states.
-        """
-        self.use_deter_only = use_deter_only
+    Uses the compressed deterministic state from wm_feature_encoder,
+    which is the representation actually given to the actor-critic.
+    """
+
+    def __init__(self):
         self.states = []
         self.metadata = {
             'termination': [],
@@ -31,13 +29,13 @@ class TerminationEventsVisualizer:
             'obstacle_phase': [],  # 0=before, 1=close, 2=after
         }
 
-    def collect_state(self, wm_latent, termination, collision, stumble,
+    def collect_state(self, compressed_deter, termination, collision, stumble,
                       timestep=None, episode=None, joint_angles=None, obstacle_phase=None):
         """
-        Collect a recurrent state with event information
+        Collect the compressed deterministic state with event information
 
         Args:
-            wm_latent: Dictionary containing 'deter' and 'stoch' keys
+            compressed_deter: Compressed deterministic state from wm_feature_encoder [batch, compressed_dim]
             termination: Boolean tensor indicating termination [batch]
             collision: Boolean tensor indicating collision [batch]
             stumble: Boolean tensor indicating stumble [batch]
@@ -46,16 +44,10 @@ class TerminationEventsVisualizer:
             joint_angles: Optional joint angles tensor [batch, num_joints]
             obstacle_phase: Optional obstacle phase tensor [batch] (0=before, 1=close, 2=after)
         """
-        # Extract state
-        if self.use_deter_only:
-            state = wm_latent['deter'].detach().cpu().numpy()
+        if isinstance(compressed_deter, torch.Tensor):
+            state = compressed_deter.detach().cpu().numpy()
         else:
-            deter = wm_latent['deter'].detach().cpu().numpy()
-            stoch = wm_latent['stoch'].detach().cpu().numpy()
-            # Flatten stoch if it has more dimensions than deter (e.g., [batch, stoch_classes, stoch_dim])
-            if stoch.ndim > deter.ndim:
-                stoch = stoch.reshape(stoch.shape[0], -1)
-            state = np.concatenate([deter, stoch], axis=-1)
+            state = compressed_deter
 
         self.states.append(state)
 
@@ -201,7 +193,7 @@ class TerminationEventsVisualizer:
                transform=ax.transAxes, fontsize=9, verticalalignment='top',
                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
-        plt.suptitle('UMAP of World Model Recurrent States', fontsize=14, y=1.02)
+        plt.suptitle('UMAP of Compressed Deterministic State (actor-critic input)', fontsize=14, y=1.02)
         plt.tight_layout()
 
         if save_path:
@@ -257,7 +249,7 @@ class TerminationEventsVisualizer:
 
         ax.set_xlabel('UMAP Dimension 1', fontsize=12)
         ax.set_ylabel('UMAP Dimension 2', fontsize=12)
-        ax.set_title('UMAP of World Model Recurrent States\n(colored by event type)', fontsize=14)
+        ax.set_title('UMAP of Compressed Deterministic State\n(colored by event type)', fontsize=14)
         ax.grid(True, alpha=0.3)
         ax.legend(loc='best', fontsize=10)
 
@@ -328,7 +320,7 @@ class TerminationEventsVisualizer:
         ax.set_title('Colored by Max Joint Deviation', fontsize=12)
         ax.grid(True, alpha=0.3)
 
-        plt.suptitle('UMAP of World Model Recurrent States (joint deviation from init)', fontsize=14, y=1.02)
+        plt.suptitle('UMAP of Compressed Deterministic State (joint deviation from init)', fontsize=14, y=1.02)
         plt.tight_layout()
 
         if save_path:
@@ -359,7 +351,7 @@ class TerminationEventsVisualizer:
         plt.colorbar(sc, ax=ax, label='Timestep')
         ax.set_xlabel('UMAP Dimension 1', fontsize=12)
         ax.set_ylabel('UMAP Dimension 2', fontsize=12)
-        ax.set_title('UMAP of World Model Recurrent States\n(colored by sequence/timestep)', fontsize=14)
+        ax.set_title('UMAP of Compressed Deterministic State\n(colored by sequence/timestep)', fontsize=14)
         ax.grid(True, alpha=0.3)
 
         # Add stats
@@ -408,7 +400,7 @@ class TerminationEventsVisualizer:
 
         ax.set_xlabel('UMAP Dimension 1', fontsize=12)
         ax.set_ylabel('UMAP Dimension 2', fontsize=12)
-        ax.set_title('UMAP of World Model Recurrent States\n(colored by obstacle phase)', fontsize=14)
+        ax.set_title('UMAP of Compressed Deterministic State\n(colored by obstacle phase)', fontsize=14)
         ax.grid(True, alpha=0.3)
         ax.legend(loc='best', fontsize=10)
 
@@ -576,16 +568,18 @@ def compute_obstacle_phase(measured_heights, obstacle_state, threshold=0.05):
 
 
 def visualize_termination_events_from_checkpoint(checkpoint_path, runner, num_steps=1000,
-                                                  use_deter_only=True, save_path=None,
-                                                  n_neighbors=15):
+                                                  save_path=None, n_neighbors=15):
     """
-    Collect states from a trained model and visualize with termination/collision/stumble coloring
+    Collect compressed deterministic states from a trained model and visualize
+    with termination/collision/stumble coloring.
+
+    Uses the compressed deterministic state (output of wm_feature_encoder)
+    that is actually given to the actor-critic.
 
     Args:
         checkpoint_path: Path to model checkpoint
         runner: WMPRunner instance
         num_steps: Number of steps to collect
-        use_deter_only: Whether to use only deterministic state
         save_path: Path to save the plot
         n_neighbors: UMAP n_neighbors parameter
     """
@@ -593,7 +587,7 @@ def visualize_termination_events_from_checkpoint(checkpoint_path, runner, num_st
     runner.load(checkpoint_path)
     runner.alg.actor_critic.eval()
 
-    visualizer = TerminationEventsVisualizer(use_deter_only=use_deter_only)
+    visualizer = TerminationEventsVisualizer()
 
     # Initialize
     obs = runner.env.get_observations()
@@ -644,6 +638,9 @@ def visualize_termination_events_from_checkpoint(checkpoint_path, runner, num_st
                 wm_feature = runner._world_model.dynamics.get_deter_feat(wm_latent)
                 wm_is_first[:] = 0
 
+                # Compress deter state through wm_feature_encoder (same as actor-critic)
+                compressed_deter = runner.alg.actor_critic.wm_feature_encoder(wm_feature)
+
                 # Compute events
                 termination = compute_termination(runner.env)
                 collision = compute_collision(runner.env)
@@ -657,9 +654,9 @@ def visualize_termination_events_from_checkpoint(checkpoint_path, runner, num_st
                     runner.env.measured_heights, obstacle_state, threshold=0.05
                 )
 
-                # Collect state with event information
+                # Collect compressed deter state with event information
                 visualizer.collect_state(
-                    wm_latent,
+                    compressed_deter,
                     termination=termination,
                     collision=collision,
                     stumble=stumble,

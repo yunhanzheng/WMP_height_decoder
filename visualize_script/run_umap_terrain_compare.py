@@ -35,13 +35,12 @@ def main():
     env_args = get_args()
 
     num_steps = int(os.environ.get('UMAP_NUM_STEPS', '230'))
-    use_full_state = os.environ.get('UMAP_USE_FULL_STATE', 'true').lower() == 'true'
     save_path = os.environ.get('UMAP_SAVE_PATH', 'umap_terrain_compare.png')
     n_neighbors = int(os.environ.get('UMAP_N_NEIGHBORS', '30'))
 
     print(f"\nTerrain Comparison Visualization")
     print(f"  - num_steps: {num_steps}")
-    print(f"  - use_full_state: {use_full_state}")
+    print(f"  - state: compressed deterministic (wm_feature_encoder output)")
     print(f"  - save_path: {save_path}")
 
     # ============ SETUP ENVIRONMENT WITH MIXED TERRAIN ============
@@ -158,17 +157,9 @@ def main():
                 wm_feature = runner._world_model.dynamics.get_deter_feat(wm_latent)
                 wm_is_first[:] = 0
 
-                # Extract state
-                if use_full_state:
-                    deter = wm_latent['deter'].detach().cpu().numpy()
-                    stoch = wm_latent['stoch'].detach().cpu().numpy()
-                    if stoch.ndim > deter.ndim:
-                        stoch = stoch.reshape(stoch.shape[0], -1)
-                    state = np.concatenate([deter, stoch], axis=-1)
-                else:
-                    state = wm_latent['deter'].detach().cpu().numpy()
-
-                states.append(state)
+                # Compress deter state through wm_feature_encoder (same as actor-critic)
+                compressed_deter = runner.alg.actor_critic.wm_feature_encoder(wm_feature)
+                states.append(compressed_deter.detach().cpu().numpy())
 
                 # Determine terrain type based on terrain_levels
                 # terrain_levels tracks which row each robot is on
@@ -258,7 +249,7 @@ def main():
 
     ax.set_xlabel('UMAP Dimension 1', fontsize=12)
     ax.set_ylabel('UMAP Dimension 2', fontsize=12)
-    ax.set_title('UMAP of World Model States\n(Flat vs Obstacle Terrain)', fontsize=14)
+    ax.set_title('UMAP of Compressed Deterministic State\n(Flat vs Obstacle Terrain)', fontsize=14)
     ax.grid(True, alpha=0.3)
     ax.legend(loc='best', fontsize=10)
 

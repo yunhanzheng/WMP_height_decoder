@@ -37,15 +37,14 @@ def main():
     env_args = get_args()
 
     # Set visualization parameters
-    num_steps = int(os.environ.get('UMAP_NUM_STEPS', '1000'))
-    use_full_state = os.environ.get('UMAP_USE_FULL_STATE', 'false').lower() == 'true'
+    num_steps = int(os.environ.get('UMAP_NUM_STEPS', '230'))
     save_path = os.environ.get('UMAP_SAVE_PATH', 'umap_near_obstacle.png')
-    n_neighbors = int(os.environ.get('UMAP_N_NEIGHBORS', '15'))
-    height_threshold = float(os.environ.get('UMAP_HEIGHT_THRESHOLD', '0.05'))
+    n_neighbors = int(os.environ.get('UMAP_N_NEIGHBORS', '20'))
+    height_threshold = float(os.environ.get('UMAP_HEIGHT_THRESHOLD', '0.08'))
 
     print(f"\nVisualization settings:")
     print(f"  - num_steps: {num_steps}")
-    print(f"  - use_full_state: {use_full_state}")
+    print(f"  - state: compressed deterministic (wm_feature_encoder output)")
     print(f"  - color_by: near_obstacle (terrain scan height)")
     print(f"  - height_threshold: {height_threshold}m")
     print(f"  - save_path: {save_path}")
@@ -133,8 +132,7 @@ def main():
     )
 
     print(f"\nLoading checkpoint from: {checkpoint_path}")
-    print(f"Collecting {num_steps} steps of recurrent states...")
-    print(f"Using {'full state (deter + stoch)' if use_full_state else 'deterministic state only'}")
+    print(f"Collecting {num_steps} steps of compressed deterministic states...")
     print(f"Coloring by obstacle proximity (terrain scan height > {height_threshold}m)")
 
     # Import visualization module here (after isaacgym/torch imports are done)
@@ -145,7 +143,6 @@ def main():
         checkpoint_path=checkpoint_path,
         runner=runner,
         num_steps=num_steps,
-        use_deter_only=not use_full_state,
         save_path=save_path,
         n_neighbors=n_neighbors,
         height_threshold=height_threshold

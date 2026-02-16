@@ -1,42 +1,73 @@
 """
-Extended RecurrentStateVisualizer that tracks and visualizes feet stumble events
+Visualizer that tracks and visualizes feet stumble / obstacle proximity events
+using the compressed deterministic state from wm_feature_encoder (actor-critic input).
 """
 
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import umap
-from visualize_recurrent_state import RecurrentStateVisualizer
 
 
-class FeetStumbleVisualizer(RecurrentStateVisualizer):
-    """Extends RecurrentStateVisualizer to track feet stumble events"""
+class FeetStumbleVisualizer:
+    """Visualizer that tracks obstacle proximity events using compressed deter state"""
 
-    def __init__(self, use_deter_only=True):
-        super().__init__(use_deter_only=use_deter_only)
-        # Add feet_stumble to metadata
-        self.metadata['feet_stumble'] = []
+    def __init__(self):
+        self.states = []
+        self.metadata = {
+            'feet_stumble': [],
+            'timestep': [],
+            'episode': [],
+        }
 
-    def collect_state_with_stumble(self, wm_latent, feet_stumble, reward=None,
-                                   timestep=None, episode=None, action=None):
+    def collect_state(self, compressed_deter, feet_stumble,
+                      timestep=None, episode=None):
         """
-        Collect a recurrent state with feet stumble information
+        Collect compressed deterministic state with obstacle proximity information
 
         Args:
-            wm_latent: Dictionary containing 'deter' and 'stoch' keys
-            feet_stumble: Boolean tensor indicating if feet stumbled [batch]
-            reward: Optional reward at this timestep
+            compressed_deter: Compressed deterministic state from wm_feature_encoder [batch, compressed_dim]
+            feet_stumble: Boolean tensor indicating if near obstacle [batch]
             timestep: Optional timestep index
             episode: Optional episode index
-            action: Optional action taken
         """
-        # Use parent class method for state collection
-        self.collect_state(wm_latent, reward, timestep, episode, action)
+        if isinstance(compressed_deter, torch.Tensor):
+            state = compressed_deter.detach().cpu().numpy()
+        else:
+            state = compressed_deter
+        self.states.append(state)
 
         # Add feet stumble data
         if isinstance(feet_stumble, torch.Tensor):
             feet_stumble = feet_stumble.detach().cpu().numpy()
         self.metadata['feet_stumble'].append(feet_stumble)
+
+        if timestep is not None:
+            if isinstance(timestep, torch.Tensor):
+                timestep = timestep.detach().cpu().numpy()
+            self.metadata['timestep'].append(timestep)
+
+        if episode is not None:
+            if isinstance(episode, torch.Tensor):
+                episode = episode.detach().cpu().numpy()
+            self.metadata['episode'].append(episode)
+
+    def compute_umap(self, n_neighbors=15, min_dist=0.1, metric='euclidean'):
+        """Compute UMAP embedding of collected states"""
+        if len(self.states) == 0:
+            raise ValueError("No states collected")
+
+        all_states = np.concatenate(self.states, axis=0)
+        print(f"Computing UMAP for {all_states.shape[0]} samples with {all_states.shape[1]} dimensions...")
+
+        reducer = umap.UMAP(
+            n_neighbors=n_neighbors,
+            min_dist=min_dist,
+            metric=metric,
+            n_components=2,
+            random_state=42
+        )
+        return reducer.fit_transform(all_states)
 
     def plot_umap_stumble(self, umap_results, save_path=None, figsize=(12, 8)):
         """
@@ -71,7 +102,7 @@ class FeetStumbleVisualizer(RecurrentStateVisualizer):
 
         ax.set_xlabel('UMAP Dimension 1', fontsize=12)
         ax.set_ylabel('UMAP Dimension 2', fontsize=12)
-        ax.set_title('UMAP of Recurrent States (colored by Obstacle Proximity)', fontsize=14)
+        ax.set_title('UMAP of Compressed Deterministic State (colored by Obstacle Proximity)', fontsize=14)
         ax.grid(True, alpha=0.3)
         ax.legend(loc='best', fontsize=10)
 
@@ -94,8 +125,12 @@ class FeetStumbleVisualizer(RecurrentStateVisualizer):
 
     def clear(self):
         """Clear all collected states and metadata"""
-        super().clear()
-        self.metadata['feet_stumble'] = []
+        self.states = []
+        self.metadata = {
+            'feet_stumble': [],
+            'timestep': [],
+            'episode': [],
+        }
 
 
 def compute_near_obstacle(measured_heights, threshold=0.05, close_range_x=(-0.01, 0.01), close_range_y=(-0.5, 0.5)):
@@ -141,16 +176,19 @@ def compute_near_obstacle(measured_heights, threshold=0.05, close_range_x=(-0.01
 
 
 def visualize_feet_stumble_from_checkpoint(checkpoint_path, runner, num_steps=1000,
-                                          use_deter_only=True, save_path=None,
-                                          n_neighbors=15, height_threshold=0.05):
+                                          save_path=None, n_neighbors=15,
+                                          height_threshold=0.05):
     """
-    Collect states from a trained model and visualize with near-obstacle coloring
+    Collect compressed deterministic states from a trained model and visualize
+    with near-obstacle coloring.
+
+    Uses the compressed deterministic state (output of wm_feature_encoder)
+    that is actually given to the actor-critic.
 
     Args:
         checkpoint_path: Path to model checkpoint
         runner: WMPRunner instance
         num_steps: Number of steps to collect
-        use_deter_only: Whether to use only deterministic state
         save_path: Path to save the plot
         n_neighbors: UMAP n_neighbors parameter
         height_threshold: Height threshold in meters for obstacle detection (default: 0.05m)
@@ -159,7 +197,7 @@ def visualize_feet_stumble_from_checkpoint(checkpoint_path, runner, num_steps=10
     runner.load(checkpoint_path)
     runner.alg.actor_critic.eval()
 
-    visualizer = FeetStumbleVisualizer(use_deter_only=use_deter_only)
+    visualizer = FeetStumbleVisualizer()
 
     # Initialize
     obs = runner.env.get_observations()
@@ -207,15 +245,18 @@ def visualize_feet_stumble_from_checkpoint(checkpoint_path, runner, num_steps=10
                 wm_feature = runner._world_model.dynamics.get_deter_feat(wm_latent)
                 wm_is_first[:] = 0
 
+                # Compress deter state through wm_feature_encoder (same as actor-critic)
+                compressed_deter = runner.alg.actor_critic.wm_feature_encoder(wm_feature)
+
                 # Compute near-obstacle based on terrain scan height
                 near_obstacle = compute_near_obstacle(
                     runner.env.measured_heights,
                     threshold=height_threshold
                 )
 
-                # Collect state with obstacle proximity information
-                visualizer.collect_state_with_stumble(
-                    wm_latent,
+                # Collect compressed deter state with obstacle proximity information
+                visualizer.collect_state(
+                    compressed_deter,
                     feet_stumble=near_obstacle,
                     timestep=step * torch.ones(runner.env.num_envs),
                     episode=torch.arange(runner.env.num_envs)
@@ -224,7 +265,7 @@ def visualize_feet_stumble_from_checkpoint(checkpoint_path, runner, num_steps=10
             # Take action
             history = trajectory_history.flatten(1).to(runner.device)
             actions = runner.alg.act(obs, critic_obs, history, wm_feature.to(runner.env.device))
-            obs, privileged_obs, rewards, dones, infos, reset_env_ids = runner.env.step(actions)
+            obs, privileged_obs, rewards, dones, infos, reset_env_ids, _ = runner.env.step(actions)
 
             # Update critic obs
             critic_obs = privileged_obs if privileged_obs is not None else obs
