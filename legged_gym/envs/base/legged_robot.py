@@ -38,6 +38,9 @@ from legged_gym import LEGGED_GYM_ROOT_DIR, envs
 from time import time
 from warnings import WarningMessage
 import numpy as np
+np.float = np.float64
+np.int = np.int64
+np.bool = np.bool_
 import os
 
 from isaacgym.torch_utils import *
@@ -396,6 +399,8 @@ class LeggedRobot(BaseTask):
         self.last_torques[env_ids] = 0.
         self.feet_air_time[env_ids] = 0.
         self.feet_air_time_at_contact[env_ids] = 0.
+        self.feet_no_contact_time[env_ids] = 0.
+        self.symmetry_feet_contact_ema[env_ids] = 0.
         self.first_contact[env_ids] = False
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
@@ -1041,6 +1046,8 @@ class LeggedRobot(BaseTask):
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.first_contact = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.feet_air_time_at_contact = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.feet_no_contact_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.symmetry_feet_contact_ema = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
@@ -1489,6 +1496,11 @@ class LeggedRobot(BaseTask):
         for i in range(len(termination_contact_names)):
             self.termination_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], termination_contact_names[i])
 
+        # Compute nominal total robot mass for GRF-based rewards (from env 0, before randomization)
+        body_props = self.gym.get_actor_rigid_body_properties(self.envs[0], self.actor_handles[0])
+        nominal_mass = sum(p.mass for p in body_props)
+        self.robot_weight = nominal_mass * 9.81  # body weight in Newtons (scalar)
+
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
             Otherwise create a grid.
@@ -1770,6 +1782,14 @@ class LeggedRobot(BaseTask):
         # Store air time at contact for reward computation
         self.feet_air_time_at_contact = self.feet_air_time * self.first_contact
         self.feet_air_time *= ~contact_filt
+        # Track time each foot has zero contact force (for stagnation penalty)
+        no_contact = self.contact_forces[:, self.feet_indices, 2] < 1.0
+        self.feet_no_contact_time += self.dt * no_contact
+        self.feet_no_contact_time *= no_contact  # reset to 0 when contact resumes
+        # Exponential moving average of contact state per foot (for symmetry penalty)
+        # alpha ~= dt / tau, with tau = 5.0s window (longer window = less biased toward current time)
+        alpha = min(self.dt / 5.0, 1.0)
+        self.symmetry_feet_contact_ema.mul_(1.0 - alpha).add_(alpha * contact_filt.float())
 
     def _reward_feet_air_time(self):
         # Reward long steps (air time tracking is done in _update_feet_air_time)
@@ -1843,6 +1863,32 @@ class LeggedRobot(BaseTask):
             ).clip(min=0.0),
             dim=1,
         )
+
+    def _reward_healthy_grf(self):
+        # Reward feet with vertical GRF within a healthy range [0.1, 0.8] * body_weight per foot
+        # body_weight is divided by 4 (number of feet) to get per-foot target range
+        per_foot_weight = self.robot_weight / 4.0  # scalar
+        fz = self.contact_forces[:, self.feet_indices, 2]  # (num_envs, num_feet)
+        grf_low = getattr(self.cfg.rewards, 'healthy_grf_low', 0.1)
+        grf_high = getattr(self.cfg.rewards, 'healthy_grf_high', 0.8)
+        lower_bound = grf_low * per_foot_weight
+        upper_bound = grf_high * per_foot_weight
+        in_range = (fz > lower_bound) & (fz < upper_bound)
+        return torch.sum(in_range.float(), dim=1)  # count of feet in healthy range
+
+    def _reward_foot_stagnation(self):
+        # Penalize feet that have zero contact force for more than a threshold duration
+        stagnation_threshold = getattr(self.cfg.rewards, 'foot_stagnation_threshold', 0.8)  # seconds
+        exceeded = torch.clamp(self.feet_no_contact_time - stagnation_threshold, min=0.0)
+        return torch.sum(exceeded, dim=1)
+
+    def _reward_symmetry_contact_time(self):
+        # Penalize difference in contact duty (EMA) between left and right legs
+        # Front pair: FL (index 0) vs FR (index 1)
+        front_diff = torch.abs(self.symmetry_feet_contact_ema[:, 0] - self.symmetry_feet_contact_ema[:, 1])
+        # Rear pair: RL (index 2) vs RR (index 3)
+        rear_diff = torch.abs(self.symmetry_feet_contact_ema[:, 2] - self.symmetry_feet_contact_ema[:, 3])
+        return front_diff + rear_diff
 
     def _reward_foot_clearance(self):
         # Penalize foot height error scaled by lateral foot velocity
