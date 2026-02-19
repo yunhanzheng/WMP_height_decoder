@@ -42,7 +42,7 @@ from legged_gym import LEGGED_GYM_ROOT_DIR
 
 import isaacgym
 from legged_gym.envs import *
-from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger
+from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger, export_wmp
 
 import numpy as np
 import torch
@@ -111,11 +111,27 @@ def play(args):
     ppo_runner, train_cfg = task_registry.make_alg_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
     policy = ppo_runner.get_inference_policy(device=env.device)
     
-    # export policy as a jit module (used to run it from C++)
+    # Export policy for deployment / MuJoCo sim.
+    # WMP runner  → two files: actor_policy.pt + world_model_step.pt
+    # Other runners → single actor JIT (legacy behaviour)
     if EXPORT_POLICY:
-        path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'policies')
-        export_policy_as_jit(ppo_runner.alg.actor_critic, path)
-        print('Exported policy as jit script to: ', path)
+        export_dir = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs',
+                                  train_cfg.runner.experiment_name,
+                                  'exported', 'policies')
+        if hasattr(ppo_runner, '_world_model'):
+            actor_path, wm_path = export_wmp(
+                out_dir      = export_dir,
+                actor_critic = ppo_runner.alg.actor_critic,
+                world_model  = ppo_runner._world_model,
+                env          = env,
+                runner       = ppo_runner,
+            )
+            print(f'Exported WMP actor      → {actor_path}')
+            print(f'Exported world model    → {wm_path}')
+            print(f'Deployment demo         → {os.path.join(export_dir, "demo.py")}')
+        else:
+            export_policy_as_jit(ppo_runner.alg.actor_critic, export_dir)
+            print('Exported policy as jit script to:', export_dir)
 
     logger = Logger(env.dt)
     robot_index = 0 # which robot is used for logging
