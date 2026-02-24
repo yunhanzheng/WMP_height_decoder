@@ -259,9 +259,9 @@ class Terrain:
             )
         elif choice < self.proportions[5]:
             # Domino terrain
-            num_rectangles = int(400 * difficulty)
+            num_rectangles = int(1200 * difficulty)
             rectangle_min_size = 2 * obs_scale
-            rectangle_max_size = 3 * obs_scale
+            rectangle_max_size = 10 * obs_scale
             terrain_utils.discrete_obstacles_terrain_cells(
                 terrain,
                 0.10,
@@ -274,8 +274,8 @@ class Terrain:
             )
         elif choice < self.proportions[6]:
             # stripes obstacle terrain
-            max_filled_rate = 0.6
-            min_filled_rate = 0.1
+            max_filled_rate = 0.4
+            min_filled_rate = 0.05
             terrain_utils.discrete_stripes_obstacle_terrain(
                 terrain,
                 height=0.12,
