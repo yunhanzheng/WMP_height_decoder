@@ -336,7 +336,8 @@ class TerrainGenerator:
 
 # ── Box geom export ───────────────────────────────────────────────────────────
 
-def heightmap_to_boxes(height_field_raw, horizontal_scale, vertical_scale):
+def heightmap_to_boxes(height_field_raw, horizontal_scale, vertical_scale,
+                       slope_threshold=None):
     """Convert a height field into a list of axis-aligned box obstacles.
 
     Uses a greedy rectangle-merging scan: each pixel above the minimum height
@@ -346,6 +347,13 @@ def heightmap_to_boxes(height_field_raw, horizontal_scale, vertical_scale):
 
     Only positive-height regions (above the terrain minimum) are returned.
     Negative features such as pits are ignored.
+
+    When *slope_threshold* is provided (default 0.75, matching legged_gym), the
+    function replicates the edge correction applied by
+    ``convert_heightfield_to_trimesh``: wherever the drop at the far edge of a
+    rectangle exceeds the threshold, the box is shrunk by one pixel on that
+    side.  This makes the exported box geoms match the effective flat-top width
+    seen in Isaac Gym (e.g. a 2-pixel stripe becomes a 1-pixel-wide box).
 
     Returns
     -------
@@ -358,6 +366,13 @@ def heightmap_to_boxes(height_field_raw, horizontal_scale, vertical_scale):
     H, W = hf.shape
     claimed = np.zeros((H, W), dtype=bool)
     boxes = []
+
+    # Convert slope_threshold to raw height-units / pixel, matching the
+    # scaling done inside convert_heightfield_to_trimesh:
+    #   slope_threshold *= horizontal_scale / vertical_scale
+    slope_raw = None
+    if slope_threshold is not None:
+        slope_raw = slope_threshold * horizontal_scale / vertical_scale
 
     for i in range(H):
         for j in range(W):
@@ -384,11 +399,30 @@ def heightmap_to_boxes(height_field_raw, horizontal_scale, vertical_scale):
             if height_m < 1e-6:
                 continue
 
-            sx = (i2 - i) * horizontal_scale / 2.0
-            sy = (j2 - j) * horizontal_scale / 2.0
+            # ── Slope correction (mirrors convert_heightfield_to_trimesh) ──
+            # In the trimesh the ground vertex just past each steep edge is
+            # moved inward by one pixel, making a vertical wall at the last
+            # raised-pixel boundary.  The effective flat top therefore ends one
+            # pixel earlier than the raw rectangle extent.  Apply the same
+            # correction here so box geoms match the trimesh geometry.
+            i_end = i2
+            j_end = j2
+            if slope_raw is not None:
+                # Far x-edge: drop from last raised row to the next row
+                if i2 < H and (h_val - int(hf[i2, j])) > slope_raw:
+                    i_end = i2 - 1
+                # Far y-edge: drop from last raised column to the next column
+                if j2 < W and (h_val - int(hf[i, j2])) > slope_raw:
+                    j_end = j2 - 1
+
+            if i_end <= i or j_end <= j:
+                continue  # degenerate after correction, skip
+
+            sx = (i_end - i) * horizontal_scale / 2.0
+            sy = (j_end - j) * horizontal_scale / 2.0
             sz = height_m / 2.0
-            cx = (i + i2) / 2.0 * horizontal_scale - H * horizontal_scale / 2.0
-            cy = (j + j2) / 2.0 * horizontal_scale - W * horizontal_scale / 2.0
+            cx = (i + i_end) / 2.0 * horizontal_scale - H * horizontal_scale / 2.0
+            cy = (j + j_end) / 2.0 * horizontal_scale - W * horizontal_scale / 2.0
             cz = sz  # bottom of box sits on z = 0 ground plane
 
             boxes.append((cx, cy, cz, sx, sy, sz))
@@ -615,6 +649,12 @@ def main():
     )
     parser.add_argument("--bit_depth", type=int, choices=[8, 16], default=16,
                         help="PNG bit depth: 16 for higher precision (default: 16)")
+    parser.add_argument("--slope_threshold", type=float, default=0.75,
+                        help=(
+                            "Slope threshold for edge correction in box-geom export, "
+                            "matching convert_heightfield_to_trimesh in legged_gym "
+                            "(default: 0.75). Set to 0 to disable."
+                        ))
     parser.add_argument("--visualize", action="store_true",
                         help="Also save a colourised visualisation PNG (*_vis.png)")
     parser.add_argument("--output", type=str, default="terrain",
@@ -676,7 +716,9 @@ def main():
     if do_xml:
         xml_path = base + ".xml"
         print(f"Extracting box geoms …", end=" ", flush=True)
-        boxes = heightmap_to_boxes(hf, args.horizontal_scale, args.vertical_scale)
+        slope_thr = args.slope_threshold if args.slope_threshold > 0 else None
+        boxes = heightmap_to_boxes(hf, args.horizontal_scale, args.vertical_scale,
+                                   slope_threshold=slope_thr)
         n = save_mjcf_xml(boxes, xml_path, total_x_m, total_y_m)
         print(f"{n} boxes")
         print(f"Saved XML            : {xml_path}")

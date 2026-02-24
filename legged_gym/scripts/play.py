@@ -42,7 +42,7 @@ from legged_gym import LEGGED_GYM_ROOT_DIR
 
 import isaacgym
 from legged_gym.envs import *
-from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger
+from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger, export_wmp
 
 import numpy as np
 import torch
@@ -57,8 +57,8 @@ def play(args):
     env_cfg.terrain.num_rows = 5
     env_cfg.terrain.num_cols = 1
     env_cfg.terrain.curriculum = False
-    env_cfg.terrain.difficulty = 0.1  # use 0.15 for stripe obstacle
-    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    env_cfg.terrain.difficulty = 1.0
+    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]
 
     # env_cfg.terrain.difficulty = 1.0  # use 0.15 for stripe obstacle
     # env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
@@ -381,7 +381,10 @@ def play(args):
                 img_idx += 1 
         if MOVE_CAMERA:
             lootat = env.root_states[robot_index, :3]
-            camara_position = lootat.detach().cpu().numpy() + [0, 1, 0]
+            if REAR_VIEW:
+                camara_position = lootat.detach().cpu().numpy() + [-1.5, 0, 0.5] # rear view
+            else:
+                camara_position = lootat.detach().cpu().numpy() + [0, 1, 0] # side view
             env.set_camera(camara_position, lootat)
 
         if i < stop_state_log:
@@ -451,6 +454,8 @@ if __name__ == '__main__':
     RECORD_FRAMES = False
     MOVE_CAMERA = True
     SLOW_MOTION = False
+    REAR_VIEW = True
+
     VISUALIZE_LATENT = False  # Visualize world model latent space as heatmap
     args = get_args()
     args.rl_device = args.sim_device
