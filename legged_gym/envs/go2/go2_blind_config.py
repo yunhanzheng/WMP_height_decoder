@@ -67,8 +67,6 @@ class GO2BlindCfgPPO( LeggedRobotCfgPPO ):
         experiment_name = 'go2_blind'
         algorithm_class_name = 'PPOWMP'
         policy_class_name = 'ActorCritic'
-        max_iterations = 20000  # number of policy updates
-        save_interval = 1000
         use_wandb = True
 
     class depth_predictor:
