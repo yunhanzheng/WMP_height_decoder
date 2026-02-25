@@ -145,15 +145,14 @@ class TerminationEventsVisualizer:
         if np.any(termination):
             ax.scatter(umap_results[termination, 0], umap_results[termination, 1],
                       c='red', alpha=0.7, s=15, label='Termination')
-        ax.set_xlabel('UMAP Dimension 1', fontsize=10)
-        ax.set_ylabel('UMAP Dimension 2', fontsize=10)
-        ax.set_title('Colored by Termination', fontsize=12)
+        ax.set_xlabel('UMAP Dimension 1', fontsize=14)
+        ax.set_ylabel('UMAP Dimension 2', fontsize=14)
+        ax.set_title('Colored by Termination', fontsize=16)
         ax.grid(True, alpha=0.3)
-        ax.legend(loc='best', fontsize=8)
+        ax.legend(loc='best', fontsize=13)
         num_term = np.sum(termination)
         ax.text(0.02, 0.98, f'Termination: {num_term}/{len(termination)} ({100*num_term/len(termination):.2f}%)',
-               transform=ax.transAxes, fontsize=9, verticalalignment='top',
-               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+               transform=ax.transAxes, fontsize=13, verticalalignment='top')
 
         # Plot 2: Collision
         ax = axes[1]
@@ -164,15 +163,14 @@ class TerminationEventsVisualizer:
         if np.any(collision):
             ax.scatter(umap_results[collision, 0], umap_results[collision, 1],
                       c='orange', alpha=0.7, s=15, label='Collision')
-        ax.set_xlabel('UMAP Dimension 1', fontsize=10)
-        ax.set_ylabel('UMAP Dimension 2', fontsize=10)
-        ax.set_title('Colored by Collision', fontsize=12)
+        ax.set_xlabel('UMAP Dimension 1', fontsize=14)
+        ax.set_ylabel('UMAP Dimension 2', fontsize=14)
+        ax.set_title('Colored by Collision', fontsize=16)
         ax.grid(True, alpha=0.3)
-        ax.legend(loc='best', fontsize=8)
+        ax.legend(loc='best', fontsize=13)
         num_coll = np.sum(collision)
         ax.text(0.02, 0.98, f'Collision: {num_coll}/{len(collision)} ({100*num_coll/len(collision):.2f}%)',
-               transform=ax.transAxes, fontsize=9, verticalalignment='top',
-               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+               transform=ax.transAxes, fontsize=13, verticalalignment='top')
 
         # Plot 3: Stumble
         ax = axes[2]
@@ -183,17 +181,16 @@ class TerminationEventsVisualizer:
         if np.any(stumble):
             ax.scatter(umap_results[stumble, 0], umap_results[stumble, 1],
                       c='green', alpha=0.7, s=15, label='Stumble')
-        ax.set_xlabel('UMAP Dimension 1', fontsize=10)
-        ax.set_ylabel('UMAP Dimension 2', fontsize=10)
-        ax.set_title('Colored by Stumble', fontsize=12)
+        ax.set_xlabel('UMAP Dimension 1', fontsize=14)
+        ax.set_ylabel('UMAP Dimension 2', fontsize=14)
+        ax.set_title('Colored by Stumble', fontsize=16)
         ax.grid(True, alpha=0.3)
-        ax.legend(loc='best', fontsize=8)
+        ax.legend(loc='best', fontsize=13)
         num_stum = np.sum(stumble)
         ax.text(0.02, 0.98, f'Stumble: {num_stum}/{len(stumble)} ({100*num_stum/len(stumble):.2f}%)',
-               transform=ax.transAxes, fontsize=9, verticalalignment='top',
-               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+               transform=ax.transAxes, fontsize=13, verticalalignment='top')
 
-        plt.suptitle('UMAP of Compressed Deterministic State (actor-critic input)', fontsize=14, y=1.02)
+        plt.suptitle('UMAP of Compressed Deterministic State (actor-critic input)', fontsize=17, y=1.02)
         plt.tight_layout()
 
         if save_path:
@@ -247,11 +244,11 @@ class TerminationEventsVisualizer:
                 ax.scatter(umap_results[mask, 0], umap_results[mask, 1],
                           c=color, alpha=alpha, s=size, label=label)
 
-        ax.set_xlabel('UMAP Dimension 1', fontsize=12)
-        ax.set_ylabel('UMAP Dimension 2', fontsize=12)
-        ax.set_title('UMAP of Compressed Deterministic State\n(colored by event type)', fontsize=14)
+        ax.set_xlabel('UMAP Dimension 1', fontsize=14)
+        ax.set_ylabel('UMAP Dimension 2', fontsize=14)
+        ax.set_title('UMAP of Compressed Deterministic State\n(colored by event type)', fontsize=16)
         ax.grid(True, alpha=0.3)
-        ax.legend(loc='best', fontsize=10)
+        ax.legend(loc='best', fontsize=13)
 
         # Add statistics
         stats_text = (
@@ -260,8 +257,7 @@ class TerminationEventsVisualizer:
             f'Stumble: {np.sum(stumble)}/{len(stumble)} ({100*np.sum(stumble)/len(stumble):.2f}%)'
         )
         ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
-               fontsize=10, verticalalignment='top',
-               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+               fontsize=13, verticalalignment='top')
 
         plt.tight_layout()
 
@@ -349,16 +345,15 @@ class TerminationEventsVisualizer:
         sc = ax.scatter(umap_results[:, 0], umap_results[:, 1],
                        c=timesteps, cmap='viridis', alpha=0.5, s=10)
         plt.colorbar(sc, ax=ax, label='Timestep')
-        ax.set_xlabel('UMAP Dimension 1', fontsize=12)
-        ax.set_ylabel('UMAP Dimension 2', fontsize=12)
-        ax.set_title('UMAP of Compressed Deterministic State\n(colored by sequence/timestep)', fontsize=14)
+        ax.set_xlabel('UMAP Dimension 1', fontsize=14)
+        ax.set_ylabel('UMAP Dimension 2', fontsize=14)
+        ax.set_title('UMAP of Compressed Deterministic State\n(colored by sequence/timestep)', fontsize=16)
         ax.grid(True, alpha=0.3)
 
         # Add stats
         stats_text = f'Timestep range: {int(timesteps.min())} - {int(timesteps.max())}'
         ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
-               fontsize=10, verticalalignment='top',
-               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+               fontsize=13, verticalalignment='top')
 
         plt.tight_layout()
 
@@ -398,11 +393,11 @@ class TerminationEventsVisualizer:
                 ax.scatter(umap_results[mask, 0], umap_results[mask, 1],
                           c=color, alpha=0.5, s=10, label=label)
 
-        ax.set_xlabel('UMAP Dimension 1', fontsize=12)
-        ax.set_ylabel('UMAP Dimension 2', fontsize=12)
-        ax.set_title('UMAP of Compressed Deterministic State\n(colored by obstacle phase)', fontsize=14)
+        # ax.set_xlabel('UMAP Dimension 1', fontsize=14)
+        # ax.set_ylabel('UMAP Dimension 2', fontsize=14)
+        # ax.set_title('UMAP of Compressed Deterministic State\n(colored by obstacle phase)', fontsize=16)
         ax.grid(True, alpha=0.3)
-        ax.legend(loc='best', fontsize=10)
+        ax.legend(loc='best', fontsize=20)
 
         # Add statistics
         before_count = np.sum(obstacle_phase == 0)
@@ -414,9 +409,8 @@ class TerminationEventsVisualizer:
             f'Close: {close_count}/{total} ({100*close_count/total:.1f}%)\n'
             f'After: {after_count}/{total} ({100*after_count/total:.1f}%)'
         )
-        ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
-               fontsize=10, verticalalignment='top',
-               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        # ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
+        #        fontsize=13, verticalalignment='top')
 
         plt.tight_layout()
 
