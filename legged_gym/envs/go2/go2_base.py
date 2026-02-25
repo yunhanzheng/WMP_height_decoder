@@ -146,18 +146,19 @@ class GO2BaseCfg(LeggedRobotCfg):
     class rewards(LeggedRobotCfg.rewards):
         reward_curriculum = False
         class scales:
-            termination = -20.0
+            termination = -0.1
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
             lin_vel_z = -0.1
             ang_vel_xy = -0.01
-            orientation = -0.1
-            dof_acc = -1e-7
+            orientation = -0.01
+            roll = -0.0
+            dof_acc = -2.5e-7
             joint_power = -2e-5
             base_height = -0.01
             foot_clearance = -0.0
             action_rate = -0.0002
-            smoothness = -0.00005
+            smoothness = -0.0001
             feet_air_time = 0.01
             collision = -0.1
             feet_stumble = -0.1
@@ -168,6 +169,8 @@ class GO2BaseCfg(LeggedRobotCfg):
             dof_vel_limits = -0.0
             torque_limits = -0.0
             no_excessive_air_time = -0.0
+            # foot_stagnation = -0.1   # penalty for feet with no contact for too long
+            # symmetry_contact_time = -0.05  # penalty for left-right contact time asymmetry (front & rear)
 
         only_positive_rewards = (
             False  # if true negative total rewards are clipped at zero (avoids early termination problems)
@@ -179,6 +182,7 @@ class GO2BaseCfg(LeggedRobotCfg):
         base_height_target = 0.30
         max_contact_force = 100.0  # forces above this value are penalized
         clearance_height_target = -0.1
+        foot_stagnation_threshold = 0.5  # seconds of zero contact before penalty applies
 
     class noise:
         add_noise = False
