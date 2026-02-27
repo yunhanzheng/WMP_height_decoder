@@ -9,7 +9,7 @@ class GO2BaselineBlindCfg(GO2BaseCfg):
         action_dim = 12
         privileged_dim = 24 + 26 + 3  # privileged_obs[:,:privileged_dim] is the privileged information in privileged_obs, include 3-dim base linear vel
         height_dim = 187  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs
-        num_observations = prop_dim + privileged_dim + height_dim + action_dim
+        num_observations = prop_dim + action_dim
         num_privileged_obs = prop_dim + privileged_dim + height_dim + action_dim
         privileged_obs = True  # Disable extra privileged observations (domain randomization params)
 
