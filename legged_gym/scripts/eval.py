@@ -31,10 +31,11 @@ def evaluate(args):
     randomize = RANDOMIZE
     add_noise = ADD_NOISE
 
-    print(f"\n{'='*60}")
-    print(f"Evaluation: {args.task}")
-    print(f"Number of parallel environments: {num_envs}")
-    print(f"{'='*60}\n")
+    if SHOW_ALL:
+        print(f"\n{'='*60}")
+        print(f"Evaluation: {args.task}")
+        print(f"Number of parallel environments: {num_envs}")
+        print(f"{'='*60}\n")
 
     # Get configs
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
@@ -80,13 +81,13 @@ def evaluate(args):
     train_cfg.runner.amp_num_preload_transitions = 1
 
     # Create environment
-    print("Creating environment...")
+    if SHOW_ALL: print("Creating environment...")
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     _, _ = env.reset()
     obs = env.get_observations()
 
     # Load policy
-    print("Loading policy...")
+    if SHOW_ALL: print("Loading policy...")
     train_cfg.runner.resume = True
     train_cfg.runner.use_wandb = False
     train_cfg.runner.checkpoint = -1
@@ -104,7 +105,7 @@ def evaluate(args):
     # Check if using HIMOnPolicyRunner
     use_him = 'HIMOnPolicyRunner' in type(ppo_runner).__name__
     if use_him:
-        print("HIMOnPolicyRunner detected - using observation history directly")
+        if SHOW_ALL: print("HIMOnPolicyRunner detected - using observation history directly")
 
     # Initialize history buffers for LongShortRunner
     if use_long_short:
@@ -188,13 +189,14 @@ def evaluate(args):
         proprio = extract_proprio(obs)
         short_history, long_history = update_history(proprio, None, short_history, long_history)
 
-        print(f"LongShortRunner eval mode initialized:")
-        print(f"  prop_dim: {prop_dim}")
-        print(f"  short_history_length: {short_history_length}")
-        print(f"  long_history_length: {long_history_length}")
+        if SHOW_ALL:
+            print(f"LongShortRunner eval mode initialized:")
+            print(f"  prop_dim: {prop_dim}")
+            print(f"  short_history_length: {short_history_length}")
+            print(f"  long_history_length: {long_history_length}")
 
     if use_world_model:
-        print("Initializing world model...")
+        if SHOW_ALL: print("Initializing world model...")
         history_length = 5
         trajectory_history = torch.zeros(size=(env.num_envs, history_length, env.num_obs -
                                                 env.privileged_dim - env.height_dim - 3), device=env.device)
@@ -226,7 +228,7 @@ def evaluate(args):
         wm_feature = None
 
     # Run evaluation
-    print(f"Running evaluation for {env.max_episode_length} steps...\n")
+    if SHOW_ALL: print(f"Running evaluation for {env.max_episode_length} steps...\n")
     start_time = time.time()
 
     total_rewards = torch.zeros((env.num_envs,), device=env.device)
@@ -276,8 +278,22 @@ def evaluate(args):
             actor_obs = obs
             actions = policy(actor_obs.detach())
 
-        # Save positions before step (needed for displacement calculation, since step resets terminated envs)
+        # Save positions and contact forces before step — terminated envs are reset inside step()
+        # so post-step contact_forces for those envs reflect the new initial state, not the collision
         pre_step_positions = env.root_states[:, :2].clone()
+        pre_step_collision = torch.sum(
+            1.0 * (torch.norm(env.contact_forces[:, env.penalised_contact_indices, :], dim=-1) > 0.1), dim=1
+        ) if hasattr(env, 'penalised_contact_indices') else None
+        pre_step_termination = torch.sum(
+            1.0 * (torch.norm(env.contact_forces[:, env.termination_contact_indices, :], dim=-1) > 1.0), dim=1
+        ) if hasattr(env, 'termination_contact_indices') else None
+        if hasattr(env, 'contact_forces'):
+            _fc = env.contact_forces[:, env.feet_indices, :]
+            pre_step_stumble = torch.any(
+                torch.norm(_fc[:, :, :2], dim=2) > 5 * torch.abs(_fc[:, :, 2]), dim=1
+            ).float()
+        else:
+            pre_step_stumble = None
 
         obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
 
@@ -300,32 +316,13 @@ def evaluate(args):
         # Total reward accumulation
         metrics['total_reward'] += rews * active_mask.float()
 
-        # Collision (penalised contact with parts in penalize_contacts_on: thigh, calf)
-        if hasattr(env, 'penalised_contact_indices'):
-            collision = torch.sum(
-                1.0 * (torch.norm(env.contact_forces[:, env.penalised_contact_indices, :], dim=-1) > 0.1),
-                dim=1
-            )
-            metrics['collision'] += collision * active_mask.float()
-
-        # Termination contacts (contacts with parts in terminate_after_contacts_on: base)
-        if hasattr(env, 'termination_contact_indices'):
-            termination = torch.sum(
-                1.0 * (torch.norm(env.contact_forces[:, env.termination_contact_indices, :], dim=-1) > 1.0),
-                dim=1
-            )
-            metrics['termination'] += termination * active_mask.float()
-
-        # Feet stumble
-        if hasattr(env, 'contact_forces'):
-            # Stumble is detected when feet contact forces are not vertical
-            feet_contact_forces = env.contact_forces[:, env.feet_indices, :]
-            # Check if there's lateral force when foot is in contact
-            vertical_forces = feet_contact_forces[:, :, 2]  # z-component
-            lateral_forces = torch.norm(feet_contact_forces[:, :, :2], dim=2)  # xy-components
-            # Stumble when lateral force is significant relative to vertical
-            stumble = torch.sum((lateral_forces > 5.0) & (vertical_forces > 1.0), dim=1)
-            metrics['feet_stumble'] += stumble * active_mask.float()
+        # Collision, termination, stumble — use pre-step contact forces so terminated envs aren't missed
+        if pre_step_collision is not None:
+            metrics['collision'] += pre_step_collision * active_mask.float()
+        if pre_step_termination is not None:
+            metrics['termination'] += pre_step_termination * active_mask.float()
+        if pre_step_stumble is not None:
+            metrics['feet_stumble'] += pre_step_stumble * active_mask.float()
 
         # Travel distance (displacement from start position)
         # Record displacement for environments that just terminated (use pre-step position since env resets after done)
@@ -396,26 +393,28 @@ def evaluate(args):
     median_reward = float(np.median(rewards_cpu))
 
     # Print results
-    print(f"{'='*60}")
-    print(f"EVALUATION RESULTS")
-    print(f"{'='*60}")
-    print(f"Number of environments: {num_envs}")
-    print(f"Evaluation time:        {elapsed_time:.2f}s")
-    print(f"\n{'─'*60}")
-    print(f"TOTAL REWARD STATISTICS")
-    print(f"{'─'*60}")
-    print(f"Best reward:            {best_reward:.2f}")
-    print(f"Worst reward:           {worst_reward:.2f}")
-    print(f"Mean reward:            {mean_reward:.2f}")
-    print(f"Median reward:          {median_reward:.2f}")
-    print(f"Std deviation:          {std_reward:.2f}")
+    if SHOW_ALL:
+        print(f"{'='*60}")
+        print(f"EVALUATION RESULTS")
+        print(f"{'='*60}")
+        print(f"Number of environments: {num_envs}")
+        print(f"Evaluation time:        {elapsed_time:.2f}s")
+        print(f"\n{'─'*60}")
+        print(f"TOTAL REWARD STATISTICS")
+        print(f"{'─'*60}")
+        print(f"Best reward:            {best_reward:.2f}")
+        print(f"Worst reward:           {worst_reward:.2f}")
+        print(f"Mean reward:            {mean_reward:.2f}")
+        print(f"Median reward:          {median_reward:.2f}")
+        print(f"Std deviation:          {std_reward:.2f}")
 
     # Print per-step metrics
-    print(f"\n{'─'*60}")
-    print(f"METRICS (per step)")
-    print(f"{'─'*60}")
-    print(f"{'Metric':<30} {'Best':>10} {'Mean':>10} {'Worst':>10}")
-    print(f"{'─'*60}")
+    if SHOW_ALL:
+        print(f"\n{'─'*60}")
+        print(f"METRICS (per step)")
+        print(f"{'─'*60}")
+        print(f"{'Metric':<30} {'Best':>10} {'Mean':>10} {'Worst':>10}")
+        print(f"{'─'*60}")
 
     metric_stats = {}
     step_counts_cpu = step_counts.cpu().numpy()
@@ -428,6 +427,7 @@ def evaluate(args):
                 'best': float(np.max(total_values)),
                 'mean': float(np.mean(total_values)),
                 'worst': float(np.min(total_values)),
+                'std': float(np.std(total_values)),
             }
         else:
             # Compute per-step values by dividing by step count
@@ -439,6 +439,7 @@ def evaluate(args):
                     'best': float(np.max(per_step_values)),
                     'mean': float(np.mean(per_step_values)),
                     'worst': float(np.min(per_step_values)),
+                    'std': float(np.std(per_step_values)),
                 }
             else:
                 # For errors/penalties, lower is better
@@ -446,6 +447,7 @@ def evaluate(args):
                     'best': float(np.min(per_step_values)),
                     'mean': float(np.mean(per_step_values)),
                     'worst': float(np.max(per_step_values)),
+                    'std': float(np.std(per_step_values)),
                 }
 
     # Print in fixed order
@@ -460,18 +462,20 @@ def evaluate(args):
         'travel_distance': 'Displacement (m)',
     }
 
-    for key in metric_order:
-        if key in metric_stats:
-            stats = metric_stats[key]
-            name = metric_names.get(key, key)
-            print(f"{name:<30} {stats['best']:>10.4f} {stats['mean']:>10.4f} {stats['worst']:>10.4f}")
+    if SHOW_ALL:
+        for key in metric_order:
+            if key in metric_stats:
+                stats = metric_stats[key]
+                name = metric_names.get(key, key)
+                print(f"{name:<30} {stats['best']:>10.4f} {stats['mean']:>10.4f} {stats['worst']:>10.4f}")
 
     # Compute per-displacement metrics (avg by displacement)
-    print(f"\n{'─'*60}")
-    print(f"METRICS (per meter displacement)")
-    print(f"{'─'*60}")
-    print(f"{'Metric':<30} {'Best':>10} {'Mean':>10} {'Worst':>10}")
-    print(f"{'─'*60}")
+    if SHOW_ALL:
+        print(f"\n{'─'*60}")
+        print(f"METRICS (per meter displacement)")
+        print(f"{'─'*60}")
+        print(f"{'Metric':<30} {'Best':>10} {'Mean':>10} {'Worst':>10}")
+        print(f"{'─'*60}")
 
     travel_dist_cpu = metrics['travel_distance'].cpu().numpy()
     per_disp_keys = ['collision', 'termination', 'feet_stumble']
@@ -487,16 +491,29 @@ def evaluate(args):
             'best': float(np.min(per_disp_values)),
             'mean': float(np.mean(per_disp_values)),
             'worst': float(np.max(per_disp_values)),
+            'std': float(np.std(per_disp_values)),
         }
-        stats = metric_per_disp_stats[key]
-        name = per_disp_names[key]
-        print(f"{name:<30} {stats['best']:>10.4f} {stats['mean']:>10.4f} {stats['worst']:>10.4f}")
+        if SHOW_ALL:
+            stats = metric_per_disp_stats[key]
+            name = per_disp_names[key]
+            print(f"{name:<30} {stats['best']:>10.4f} {stats['mean']:>10.4f} {stats['worst']:>10.4f}")
 
-    print(f"{'='*60}\n")
+    if SHOW_ALL:
+        print(f"{'='*60}\n")
 
     # Print Excel-friendly summary line (tab-separated)
+    _sd = lambda s: s['std']
     print("EXCEL COPY (mean_reward, lin_vel_mse, ang_vel_mse, collision, termination, stumble, displacement, collision/m, termination/m, stumble/m):")
-    print(f"{mean_reward:.2f}\n{metric_stats['lin_vel_mse']['mean']:.4f}\n{metric_stats['ang_vel_mse']['mean']:.4f}\n{metric_stats['collision']['mean']:.4f}\n{metric_stats['termination']['mean']:.4f}\n{metric_stats['feet_stumble']['mean']:.4f}\n{metric_stats['travel_distance']['mean']:.4f}\n{metric_per_disp_stats['collision']['mean']:.4f}\n{metric_per_disp_stats['termination']['mean']:.4f}\n{metric_per_disp_stats['feet_stumble']['mean']:.4f}")
+    print(f"{mean_reward:.2f}±{std_reward:.2f}\n"
+          f"{metric_stats['lin_vel_mse']['mean']:.4f}±{_sd(metric_stats['lin_vel_mse']):.4f}\n"
+          f"{metric_stats['ang_vel_mse']['mean']:.4f}±{_sd(metric_stats['ang_vel_mse']):.4f}\n"
+          f"{metric_stats['collision']['mean']:.4f}±{_sd(metric_stats['collision']):.4f}\n"
+          f"{metric_stats['termination']['mean']:.4f}±{_sd(metric_stats['termination']):.4f}\n"
+          f"{metric_stats['feet_stumble']['mean']:.4f}±{_sd(metric_stats['feet_stumble']):.4f}\n"
+          f"{metric_stats['travel_distance']['mean']:.4f}±{_sd(metric_stats['travel_distance']):.4f}\n"
+          f"{metric_per_disp_stats['collision']['mean']:.4f}±{_sd(metric_per_disp_stats['collision']):.4f}\n"
+          f"{metric_per_disp_stats['termination']['mean']:.4f}±{_sd(metric_per_disp_stats['termination']):.4f}\n"
+          f"{metric_per_disp_stats['feet_stumble']['mean']:.4f}±{_sd(metric_per_disp_stats['feet_stumble']):.4f}")
 
     # Print all rewards if enabled
     if SHOW_ALL:
@@ -553,8 +570,8 @@ if __name__ == '__main__':
     # EVALUATION CONFIGURATION (Edit these values)
     # ============================================
     NUM_ENVS = 100          # Number of parallel environments
-    DIFFICULTY = 0.12       # Terrain difficulty (0.0 - 1.0)
-    VEL_X = 0.8           # Forward velocity command (m/s)
+    DIFFICULTY = 1.0       # Terrain difficulty (0.0 - 1.0)
+    VEL_X = 1.0           # Forward velocity command (m/s)
     VEL_Y = 0.0           # Lateral velocity command (m/s)
     VEL_YAW = 0.0         # Yaw velocity command (rad/s)
     RANDOMIZE = False     # Enable domain randomization
