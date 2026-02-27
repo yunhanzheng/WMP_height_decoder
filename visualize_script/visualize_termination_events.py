@@ -709,11 +709,11 @@ def visualize_termination_events_from_checkpoint(checkpoint_path, runner, num_st
     # Save individual event plots
     if save_path:
         base_path = save_path.rsplit('.', 1)[0]
-        visualizer.plot_umap_events(umap_results, save_path=f"{base_path}_separate.png")
-        visualizer.plot_umap_combined(umap_results, save_path=f"{base_path}_combined.png")
-        visualizer.plot_umap_joint_angles(umap_results, save_path=f"{base_path}_joint_angles.png")
-        visualizer.plot_umap_sequence(umap_results, save_path=f"{base_path}_sequence.png")
-        visualizer.plot_umap_obstacle_phase(umap_results, save_path=f"{base_path}_obstacle_phase.png")
+        visualizer.plot_umap_events(umap_results, save_path=f"{base_path}_separate.pdf")
+        visualizer.plot_umap_combined(umap_results, save_path=f"{base_path}_combined.pdf")
+        visualizer.plot_umap_joint_angles(umap_results, save_path=f"{base_path}_joint_angles.pdf")
+        visualizer.plot_umap_sequence(umap_results, save_path=f"{base_path}_sequence.pdf")
+        visualizer.plot_umap_obstacle_phase(umap_results, save_path=f"{base_path}_obstacle_phase.pdf")
     else:
         visualizer.plot_umap_events(umap_results)
         visualizer.plot_umap_combined(umap_results)

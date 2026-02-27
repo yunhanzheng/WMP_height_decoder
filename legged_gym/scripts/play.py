@@ -57,8 +57,8 @@ def play(args):
     env_cfg.terrain.num_rows = 5
     env_cfg.terrain.num_cols = 1
     env_cfg.terrain.curriculum = False
-    env_cfg.terrain.difficulty = 1.0
-    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+    env_cfg.terrain.difficulty = 1.0 # use 0.1 for latent heatmap
+    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 
     # env_cfg.terrain.difficulty = 1.0  # use 0.15 for stripe obstacle
     # env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
@@ -435,14 +435,14 @@ def play(args):
 
         ax.set_xlabel('Step')
         ax.set_ylabel('Latent Dimension')
-        ax.set_title('Compressed Deterministic State (wm_feature_encoder output) Over Time')
+        ax.set_title('Compressed Deterministic State Over Time')
 
         # Add colorbar
         cbar = fig.colorbar(im, ax=ax)
         cbar.set_label('Latent Value')
 
         # Save figure
-        save_path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'latent_heatmap.png')
+        save_path = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'latent_heatmap.pdf')
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Saved latent heatmap to: {save_path}")

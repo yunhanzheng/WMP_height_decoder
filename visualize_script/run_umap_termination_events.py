@@ -8,7 +8,7 @@ Usage:
 
 Environment Variables:
     UMAP_NUM_STEPS: Number of steps to collect (default: 1000)
-    UMAP_SAVE_PATH: Output file path (default: umap_termination_events.png)
+    UMAP_SAVE_PATH: Output file path (default: umap_termination_events.pdf)
     UMAP_N_NEIGHBORS: UMAP n_neighbors parameter (default: 15)
 """
 
@@ -42,7 +42,7 @@ def main():
 
     # Set visualization parameters
     num_steps = int(os.environ.get('UMAP_NUM_STEPS', '230'))
-    save_path = os.environ.get('UMAP_SAVE_PATH', 'umap_termination_events.png')
+    save_path = os.environ.get('UMAP_SAVE_PATH', 'umap_termination_events.pdf')
     n_neighbors = int(os.environ.get('UMAP_N_NEIGHBORS', '15'))
 
     print(f"\nVisualization settings:")
