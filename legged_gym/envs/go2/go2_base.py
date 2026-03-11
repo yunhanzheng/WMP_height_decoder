@@ -198,5 +198,5 @@ class GO2BaseCfg(LeggedRobotCfg):
         class ranges:
             lin_vel_x = [-1.0, 1.0]  # min max [m/s]
             lin_vel_y = [-1.0, 1.0]  # min max [m/s]
-            ang_vel_yaw = [-3.14, 3.14]  # min max [rad/s]
+            ang_vel_yaw = [-3.14, 3.14]  # min max [rad]
             heading = [-3.14, 3.14]  # min max [rad/s]
