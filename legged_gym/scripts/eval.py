@@ -42,14 +42,14 @@ def evaluate(args):
 
     # Override parameters
     env_cfg.env.num_envs = num_envs
-    env_cfg.env.episode_length_s = 4.6
-    env_cfg.terrain.num_rows = 1
+    env_cfg.env.episode_length_s = 20#4.6
+    env_cfg.terrain.num_rows = 5
     env_cfg.terrain.num_cols = 1
-    env_cfg.terrain.terrain_length = 2
-    env_cfg.terrain.terrain_width = 2
+    env_cfg.terrain.terrain_length = 15
+    env_cfg.terrain.terrain_width = 15
     env_cfg.terrain.curriculum = False
     env_cfg.terrain.difficulty = difficulty
-    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 
     env_cfg.noise.add_noise = add_noise
 
@@ -243,11 +243,16 @@ def evaluate(args):
         'feet_stumble': torch.zeros((env.num_envs,), device=env.device),
         'total_reward': torch.zeros((env.num_envs,), device=env.device),
         'travel_distance': torch.zeros((env.num_envs,), device=env.device),
+        'success': torch.zeros((env.num_envs,), dtype=torch.bool, device=env.device),
     }
     step_counts = torch.zeros((env.num_envs,), device=env.device)
 
     # Track initial positions for displacement calculation
     initial_positions = env.root_states[:, :2].clone()  # XY positions
+
+    # Terrain boundary thresholds (robot starts at center of its terrain cell)
+    terrain_half_length = env_cfg.terrain.terrain_length / 2.0
+    terrain_half_width = env_cfg.terrain.terrain_width / 2.0
 
     num_steps = int(env.max_episode_length)
     for i in range(num_steps + 3):
@@ -294,6 +299,14 @@ def evaluate(args):
             ).float()
         else:
             pre_step_stumble = None
+
+        # Success: robot has exited its terrain boundary (checked before step to avoid post-reset position)
+        pre_step_disp = pre_step_positions - initial_positions
+        out_of_terrain = (
+            (torch.abs(pre_step_disp[:, 0]) > terrain_half_length) |
+            (torch.abs(pre_step_disp[:, 1]) > terrain_half_width)
+        )
+        metrics['success'] |= out_of_terrain & ~env_dones
 
         obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
 
@@ -382,6 +395,9 @@ def evaluate(args):
         displacement = torch.norm(current_positions - initial_positions, dim=1)
         metrics['travel_distance'] += displacement * still_active.float()
 
+    # Success rate: fraction of envs that exited their terrain at any point
+    success_rate = float(metrics['success'].float().mean().item())
+
     elapsed_time = time.time() - start_time
 
     # Compute statistics
@@ -416,10 +432,19 @@ def evaluate(args):
         print(f"{'Metric':<30} {'Best':>10} {'Mean':>10} {'Worst':>10}")
         print(f"{'─'*60}")
 
+    if SHOW_ALL:
+        print(f"\n{'─'*60}")
+        print(f"SUCCESS RATE")
+        print(f"{'─'*60}")
+        print(f"Success rate:           {success_rate*100:.1f}%  ({int(metrics['success'].sum())}/{env.num_envs} envs)")
+        print(f"  (success = robot exited {terrain_half_length*2:.1f}m×{terrain_half_width*2:.1f}m terrain)")
+
     metric_stats = {}
     step_counts_cpu = step_counts.cpu().numpy()
 
     for key, values in metrics.items():
+        if key == 'success':
+            continue  # handled separately
         if key == 'travel_distance':
             # Travel distance is total (not per-step), higher is better
             total_values = values.cpu().numpy()
@@ -503,7 +528,7 @@ def evaluate(args):
 
     # Print Excel-friendly summary line (tab-separated)
     _sd = lambda s: s['std']
-    print("EXCEL COPY (mean_reward, lin_vel_mse, ang_vel_mse, collision, termination, stumble, displacement, collision/m, termination/m, stumble/m):")
+    print("EXCEL COPY (mean_reward, lin_vel_mse, ang_vel_mse, collision, termination, stumble, displacement, collision/m, termination/m, stumble/m, success_rate):")
     print(f"{mean_reward:.2f}±{std_reward:.2f}\n"
           f"{metric_stats['lin_vel_mse']['mean']:.4f}±{_sd(metric_stats['lin_vel_mse']):.4f}\n"
           f"{metric_stats['ang_vel_mse']['mean']:.4f}±{_sd(metric_stats['ang_vel_mse']):.4f}\n"
@@ -513,7 +538,8 @@ def evaluate(args):
           f"{metric_stats['travel_distance']['mean']:.4f}±{_sd(metric_stats['travel_distance']):.4f}\n"
           f"{metric_per_disp_stats['collision']['mean']:.4f}±{_sd(metric_per_disp_stats['collision']):.4f}\n"
           f"{metric_per_disp_stats['termination']['mean']:.4f}±{_sd(metric_per_disp_stats['termination']):.4f}\n"
-          f"{metric_per_disp_stats['feet_stumble']['mean']:.4f}±{_sd(metric_per_disp_stats['feet_stumble']):.4f}")
+          f"{metric_per_disp_stats['feet_stumble']['mean']:.4f}±{_sd(metric_per_disp_stats['feet_stumble']):.4f}\n"
+          f"{success_rate:.4f}")
 
     # Print all rewards if enabled
     if SHOW_ALL:
@@ -559,6 +585,8 @@ def evaluate(args):
     for key in per_disp_keys:
         results["statistics"]["metrics_per_displacement"][key] = metric_per_disp_stats[key]
 
+    results["statistics"]["success_rate"] = success_rate
+
     # Print full results as JSON
     if SHOW_ALL:
         print("FULL RESULTS (JSON):")
@@ -570,7 +598,7 @@ if __name__ == '__main__':
     # EVALUATION CONFIGURATION (Edit these values)
     # ============================================
     NUM_ENVS = 100          # Number of parallel environments
-    DIFFICULTY = 1.0       # Terrain difficulty (0.0 - 1.0)
+    DIFFICULTY = 0.8       # Terrain difficulty (0.0 - 1.0)
     VEL_X = 1.0           # Forward velocity command (m/s)
     VEL_Y = 0.0           # Lateral velocity command (m/s)
     VEL_YAW = 0.0         # Yaw velocity command (rad/s)

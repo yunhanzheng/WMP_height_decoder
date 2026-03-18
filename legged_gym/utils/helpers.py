@@ -172,6 +172,14 @@ def get_args():
          "help": 'Only for play'},
         {"name": "--wm_device", "type": str, "default": "None", "help": 'World model device. Overrides config file in dreamer/config.yaml if provided'},
         {"name": "--visualize-ghost", "action": "store_true", "default": False, "help": "Show ghost robot from decoder output"},
+        {"name": "--export-policy", "action": "store_true", "default": False, "help": "Export policy after loading"},
+        {"name": "--record-frames", "action": "store_true", "default": False, "help": "Record viewer frames to disk"},
+        {"name": "--move-camera", "action": "store_true", "default": False, "help": "Move camera to follow robot"},
+        {"name": "--slow-motion", "action": "store_true", "default": False, "help": "Slow-motion playback"},
+        {"name": "--rear-view", "action": "store_true", "default": False, "help": "Use rear view"},
+        {"name": "--visualize-latent", "action": "store_true", "default": False, "help": "Visualize world model latent space as heatmap"},
+        {"name": "--visualize-sensitivity", "action": "store_true", "default": False, "help": "Visualize saliency of FL-foot height w.r.t. proprioception history"},
+        {"name": "--visualize-latent-sensitivity", "action": "store_true", "default": False, "help": "Visualize saliency of 32-dim wm_latent w.r.t. proprioception history (unrolled WM)"},
 
     ]
     # parse arguments
