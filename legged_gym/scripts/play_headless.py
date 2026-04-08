@@ -12,7 +12,54 @@ How it works:
 """
 
 import os
+import sys
 import inspect
+import argparse
+
+# ──────────────────────────────────────────────────────────────────
+# Strip video-specific args from sys.argv BEFORE gymutil sees them.
+# gymutil.parse_arguments() errors on unrecognised flags, so we pull
+# our custom ones out first, parse them ourselves, then let get_args()
+# run on the cleaned argv.
+# ──────────────────────────────────────────────────────────────────
+_VIDEO_FLAGS = {
+    "--output_video": str,
+    "--fps": int,
+    "--cam_width": int,
+    "--cam_height": int,
+    "--cam_offset_x": float,
+    "--cam_offset_y": float,
+    "--cam_offset_z": float,
+}
+
+def _pop_video_args():
+    """Remove video args from sys.argv and return a namespace with their values."""
+    defaults = {
+        "output_video": "play_output.mp4",
+        "fps": 50,
+        "cam_width": 1280,
+        "cam_height": 720,
+        "cam_offset_x": -0.8,
+        "cam_offset_y": 0.0,
+        "cam_offset_z": 0.5,
+    }
+    values = dict(defaults)
+    new_argv = [sys.argv[0]]
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg in _VIDEO_FLAGS:
+            key = arg.lstrip("-").replace("-", "_")
+            cast = _VIDEO_FLAGS[arg]
+            i += 1
+            values[key] = cast(sys.argv[i])
+        else:
+            new_argv.append(arg)
+        i += 1
+    sys.argv = new_argv
+    return argparse.Namespace(**values)
+
+video_args = _pop_video_args()   # must happen before any isaacgym import triggers gymutil
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(os.path.dirname(currentdir))
@@ -28,31 +75,6 @@ from legged_gym.utils import get_args, task_registry
 import numpy as np
 import torch
 import imageio
-import argparse
-
-
-# ──────────────────────────────────────────────────────────────────
-# Extra CLI args specific to this script
-# ──────────────────────────────────────────────────────────────────
-def get_video_args():
-    """Parse extra args after get_args() has consumed its share."""
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--output_video", type=str, default="play_output.mp4",
-                        help="Path for the output MP4 file")
-    parser.add_argument("--fps", type=int, default=50,
-                        help="Frames per second in the output video")
-    parser.add_argument("--cam_width", type=int, default=1280,
-                        help="Camera width in pixels")
-    parser.add_argument("--cam_height", type=int, default=720,
-                        help="Camera height in pixels")
-    parser.add_argument("--cam_offset_x", type=float, default=-0.8,
-                        help="Camera offset X from robot (behind)")
-    parser.add_argument("--cam_offset_y", type=float, default=0.0,
-                        help="Camera offset Y from robot (side)")
-    parser.add_argument("--cam_offset_z", type=float, default=0.5,
-                        help="Camera offset Z from robot (above)")
-    known, _ = parser.parse_known_args()
-    return known
 
 
 def play_headless(args, video_args):
@@ -232,5 +254,5 @@ def play_headless(args, video_args):
 if __name__ == "__main__":
     args = get_args()
     args.rl_device = args.sim_device
-    video_args = get_video_args()
+    # video_args was already parsed at module level (before gymutil saw sys.argv)
     play_headless(args, video_args)
