@@ -2,19 +2,34 @@
 
 Run on a remote machine (no display needed):
     python legged_gym/scripts/play_headless.py --task go2_wmp \
-        --num_envs 1 --sim_device cuda:0 --rl_device cuda:0 \
+        --sim_device cuda:0 --rl_device cuda:0 \
         --output_video output.mp4 --fps 50
 
-How it works:
-- Creates a camera sensor attached to env 0 (GPU rendering, no viewer window).
-- Captures RGB frames each step via gym.get_camera_image().
-- Assembles frames into an MP4 using imageio-ffmpeg.
+The script auto-detects a missing DISPLAY and re-execs itself under xvfb-run
+so Isaac Gym's graphics context can initialise without a physical display.
+Install xvfb if needed:  apt-get install xvfb
 """
 
 import os
 import sys
 import inspect
 import argparse
+
+# ── Re-exec under xvfb-run if no display is available ─────────────
+# Isaac Gym's create_sim() segfaults when it cannot open a graphics
+# context.  xvfb-run provides a virtual framebuffer so the context
+# initialises correctly; the actual rendered frames are captured via
+# camera sensors, not the viewer window.
+if "DISPLAY" not in os.environ and "--_xvfb_child" not in sys.argv:
+    import shutil, subprocess
+    if shutil.which("xvfb-run") is None:
+        print("ERROR: No DISPLAY found and xvfb-run is not installed.")
+        print("  Fix:  apt-get install xvfb")
+        sys.exit(1)
+    cmd = ["xvfb-run", "-s", "-screen 0 1x1x24 +extension GLX",
+           sys.executable] + sys.argv + ["--_xvfb_child"]
+    print(f"No DISPLAY detected — re-execing under xvfb-run")
+    sys.exit(subprocess.call(cmd))
 
 # ──────────────────────────────────────────────────────────────────
 # Strip video-specific args from sys.argv BEFORE gymutil sees them.
@@ -31,6 +46,8 @@ _VIDEO_FLAGS = {
     "--cam_offset_y": float,
     "--cam_offset_z": float,
 }
+# Sentinel added when re-execing under xvfb-run; strip it before gymutil sees it.
+_BOOL_STRIP = {"--_xvfb_child"}
 
 def _pop_video_args():
     """Remove video args from sys.argv and return a namespace with their values."""
@@ -53,6 +70,8 @@ def _pop_video_args():
             cast = _VIDEO_FLAGS[arg]
             i += 1
             values[key] = cast(sys.argv[i])
+        elif arg in _BOOL_STRIP:
+            pass  # drop sentinel
         else:
             new_argv.append(arg)
         i += 1
@@ -77,23 +96,6 @@ import torch
 import imageio
 
 
-def _patch_base_task_for_headless_render(sim_device_id: int):
-    """Force graphics_device_id = sim_device_id even when headless=True.
-
-    Isaac Gym sets graphics_device_id = -1 in headless mode (inside __init__,
-    before create_sim is called).  We wrap create_sim to restore the GPU device
-    id just before the sim is created, so camera sensors work without a viewer.
-    """
-    from legged_gym.envs.base.legged_robot import LeggedRobot
-    _orig_create_sim = LeggedRobot.create_sim
-
-    def _patched_create_sim(self):
-        self.graphics_device_id = sim_device_id
-        _orig_create_sim(self)
-
-    LeggedRobot.create_sim = _patched_create_sim
-
-
 def play_headless(args, video_args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
 
@@ -116,18 +118,18 @@ def play_headless(args, video_args):
 
     train_cfg.runner.amp_num_preload_transitions = 1
 
-    # ── GPU camera rendering in headless mode ──────────────────────
-    # With headless=True, base_task sets graphics_device_id=-1 which
-    # disables all GPU rendering.  We keep headless=True (no viewer
-    # window) but patch LeggedRobot.create_sim to restore the GPU
-    # graphics device before the sim is created.
-    sim_device_id = int(args.sim_device.split(":")[-1]) if ":" in args.sim_device else 0
-    _patch_base_task_for_headless_render(sim_device_id)
+    # Run with headless=False so Isaac Gym initialises a graphics context
+    # (needed for camera sensors).  xvfb-run above provides the virtual
+    # display; no real monitor is needed.
+    args.headless = False
 
     # ── Make environment ───────────────────────────────────────────
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
 
-    # No viewer is created (headless=True), so nothing to destroy.
+    # Destroy the auto-created viewer — we only need the camera sensor.
+    if env.viewer is not None:
+        env.gym.destroy_viewer(env.viewer)
+        env.viewer = None
 
     # ── Attach a chase camera to env 0 ────────────────────────────
     cam_props = gymapi.CameraProperties()
