@@ -128,7 +128,8 @@ def play_headless(args, video_args):
 
     train_cfg.runner.resume = True
     train_cfg.runner.use_wandb = False
-    train_cfg.runner.checkpoint = -1
+    # Don't override checkpoint here — let --checkpoint / --load_run / --experiment_name
+    # from the CLI flow through update_cfg_from_args inside make_alg_runner.
 
     ppo_runner, train_cfg = task_registry.make_alg_runner(
         env=env, name=args.task, args=args, train_cfg=train_cfg)
