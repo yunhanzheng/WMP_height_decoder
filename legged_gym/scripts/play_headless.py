@@ -77,6 +77,23 @@ import torch
 import imageio
 
 
+def _patch_base_task_for_headless_render(sim_device_id: int):
+    """Force graphics_device_id = sim_device_id even when headless=True.
+
+    Isaac Gym sets graphics_device_id = -1 in headless mode (inside __init__,
+    before create_sim is called).  We wrap create_sim to restore the GPU device
+    id just before the sim is created, so camera sensors work without a viewer.
+    """
+    from legged_gym.envs.base.legged_robot import LeggedRobot
+    _orig_create_sim = LeggedRobot.create_sim
+
+    def _patched_create_sim(self):
+        self.graphics_device_id = sim_device_id
+        _orig_create_sim(self)
+
+    LeggedRobot.create_sim = _patched_create_sim
+
+
 def play_headless(args, video_args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
 
@@ -99,21 +116,18 @@ def play_headless(args, video_args):
 
     train_cfg.runner.amp_num_preload_transitions = 1
 
-    # ── CRITICAL: keep graphics device on GPU even in headless mode ─
-    # base_task sets graphics_device_id = -1 when headless=True.
-    # We need it on GPU to use camera sensors.
-    # Patch: force headless=False so the graphics device stays on GPU,
-    # but we will NOT create a viewer (we override that below).
-    args.headless = False   # allow GPU graphics
-    _orig_headless = True   # remember we still don't want a window
+    # ── GPU camera rendering in headless mode ──────────────────────
+    # With headless=True, base_task sets graphics_device_id=-1 which
+    # disables all GPU rendering.  We keep headless=True (no viewer
+    # window) but patch LeggedRobot.create_sim to restore the GPU
+    # graphics device before the sim is created.
+    sim_device_id = int(args.sim_device.split(":")[-1]) if ":" in args.sim_device else 0
+    _patch_base_task_for_headless_render(sim_device_id)
 
     # ── Make environment ───────────────────────────────────────────
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
 
-    # Close the auto-created viewer if one was made
-    if env.viewer is not None:
-        env.gym.destroy_viewer(env.viewer)
-        env.viewer = None
+    # No viewer is created (headless=True), so nothing to destroy.
 
     # ── Attach a chase camera to env 0 ────────────────────────────
     cam_props = gymapi.CameraProperties()
