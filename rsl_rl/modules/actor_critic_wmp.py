@@ -58,6 +58,8 @@ class ActorCriticWMP(nn.Module):
                  history_dim = 42*5,
                  wm_feature_dim = 1536,
                  wm_latent_dim=16,
+                 use_prop_in_actor=False,
+                 prop_dim=0,
                  **kwargs):
         if kwargs:
             print("ActorCritic.__init__ got unexpected arguments, which will be ignored: " + str(
@@ -69,8 +71,12 @@ class ActorCriticWMP(nn.Module):
         self.latent_dim = latent_dim
         self.height_dim = height_dim
         self.privileged_dim = privileged_dim
+        self.use_prop_in_actor = use_prop_in_actor
+        self.prop_dim = prop_dim  # dim of one history step (= history_dim / history_length)
 
-        mlp_input_dim_a = latent_dim + 3 + wm_latent_dim #latent vector + command + wm_latent
+        mlp_input_dim_a = latent_dim + 3 + wm_latent_dim  # latent + command + wm_latent
+        if use_prop_in_actor:
+            mlp_input_dim_a += prop_dim  # + current proprioception
         mlp_input_dim_c = num_critic_obs + wm_latent_dim
 
         # History Encoder
@@ -185,8 +191,10 @@ class ActorCriticWMP(nn.Module):
         latent_vector = self.history_encoder(history)
         command = observations[:, self.privileged_dim + 6:self.privileged_dim + 9]
         wm_latent_vector = self.wm_feature_encoder(wm_feature)
-        concat_observations = torch.concat((latent_vector, command, wm_latent_vector),
-                                           dim=-1)
+        parts = [latent_vector, command, wm_latent_vector]
+        if self.use_prop_in_actor:
+            parts.append(history[:, -self.prop_dim:])  # current step = last slice of history
+        concat_observations = torch.concat(parts, dim=-1)
         self.update_distribution(concat_observations)
         return self.distribution.sample()
 
@@ -206,8 +214,10 @@ class ActorCriticWMP(nn.Module):
         latent_vector = self.history_encoder(history)
         command = observations[:, self.privileged_dim + 6:self.privileged_dim + 9]
         wm_latent_vector = self.wm_feature_encoder(wm_feature)
-        concat_observations = torch.concat((latent_vector, command, wm_latent_vector),
-                                           dim=-1)
+        parts = [latent_vector, command, wm_latent_vector]
+        if self.use_prop_in_actor:
+            parts.append(history[:, -self.prop_dim:])  # current step = last slice of history
+        concat_observations = torch.concat(parts, dim=-1)
         actions_mean = self.actor(concat_observations)
         return actions_mean
 

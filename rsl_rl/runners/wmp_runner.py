@@ -94,6 +94,7 @@ class WMPRunner:
                                               weight_decay=self.depth_predictor_cfg["weight_decay"])
 
         self.history_dim = history_length * (self.env.num_obs - self.env.privileged_dim - self.env.height_dim - 3)
+        self.prop_dim = self.env.num_obs - self.env.privileged_dim - self.env.height_dim - 3  # one step dim
         actor_critic = ActorCriticWMP(num_actor_obs=num_actor_obs,
                                           num_critic_obs=num_critic_obs,
                                           num_actions=self.env.num_actions,
@@ -101,6 +102,7 @@ class WMPRunner:
                                           privileged_dim=self.env.privileged_dim,
                                           history_dim=self.history_dim,
                                           wm_feature_dim=self.wm_feature_dim,
+                                          prop_dim=self.prop_dim,
                                           **self.policy_cfg).to(self.device)
 
         alg_class = eval(self.cfg["algorithm_class_name"])  # PPOWMP
