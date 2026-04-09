@@ -137,7 +137,7 @@ class WMPRunner:
             wandb.init(
                 project="WMP",  # Replace with your project name
                 entity="xiaoyulong97-tum",  # Your wandb username
-                name=self.cfg.get("experiment_name", "run"),
+                name=os.path.basename(log_dir) if log_dir else self.cfg.get("experiment_name", "run"),
                 config={**train_cfg, **reward_scales},
             )
 
