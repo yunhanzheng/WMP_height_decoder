@@ -332,7 +332,7 @@ def export_wmp(out_dir: str, actor_critic, world_model, env, runner):
         "    step += 1\n"
     )
 
-    with open(os.path.join(out_dir, "demo.py"), "w") as fh:
+    with open(os.path.join(out_dir, "demo.py"), "w", encoding="utf-8") as fh:
         fh.write(demo_src)
 
     return actor_path, wm_path
