@@ -49,6 +49,36 @@ class ActorWMPPolicy(nn.Module):
         return self.actor(concat)
 
 
+class ActorWMPPolicyWithProp(nn.Module):
+    """Like ActorWMPPolicy but takes current proprioception as an explicit input.
+
+    Matches the use_prop_in_actor=True training path in ActorCriticWMP,
+    where the actor receives [history_encoded, command, wm_latent, current_prop].
+    """
+
+    privileged_dim: int
+
+    def __init__(self, actor_critic, privileged_dim: int):
+        super().__init__()
+        self.history_encoder    = copy.deepcopy(actor_critic.history_encoder).cpu()
+        self.wm_feature_encoder = copy.deepcopy(actor_critic.wm_feature_encoder).cpu()
+        self.actor              = copy.deepcopy(actor_critic.actor).cpu()
+        self.privileged_dim     = privileged_dim
+
+    def forward(
+        self,
+        obs:          torch.Tensor,
+        history:      torch.Tensor,
+        wm_feature:   torch.Tensor,
+        current_prop: torch.Tensor,
+    ) -> torch.Tensor:
+        latent    = self.history_encoder(history)
+        command   = obs[:, self.privileged_dim + 6 : self.privileged_dim + 9]
+        wm_latent = self.wm_feature_encoder(wm_feature)
+        concat    = torch.cat([latent, command, wm_latent, current_prop], dim=-1)
+        return self.actor(concat)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Deployment-compatible weight extractor
 # Mirrors the submodule structure of the deployment WMPWorldModelStep.__init__
@@ -182,7 +212,11 @@ def export_wmp(out_dir: str, actor_critic, world_model, env, runner):
     os.makedirs(out_dir, exist_ok=True)
 
     # ── 1. Actor (TorchScript) ────────────────────────────────────────────────
-    actor_module = ActorWMPPolicy(actor_critic, privileged_dim=env.privileged_dim)
+    use_prop = getattr(actor_critic, 'use_prop_in_actor', False)
+    if use_prop:
+        actor_module = ActorWMPPolicyWithProp(actor_critic, privileged_dim=env.privileged_dim)
+    else:
+        actor_module = ActorWMPPolicy(actor_critic, privileged_dim=env.privileged_dim)
     actor_module.eval()
     scripted_actor = torch.jit.script(actor_module)
     actor_path = os.path.join(out_dir, "actor_policy.pt")
@@ -240,6 +274,18 @@ def export_wmp(out_dir: str, actor_critic, world_model, env, runner):
     num_actions        = env.num_actions
     wm_feature_dim     = runner.wm_feature_dim
 
+    # Actor call differs depending on whether current prop is used
+    if use_prop:
+        actor_call = "        actions = actor(obs, history.flatten(1), wm_feature, current_prop)\n"
+        prop_comment = (
+            "\n"
+            f"    # ── current proprioception (dim={history_obs_dim}) ─────────────────────────\n"
+            "    current_prop = obs_slice_t  # same slice as history, passed separately\n"
+        )
+    else:
+        actor_call = "        actions = actor(obs, history.flatten(1), wm_feature)\n"
+        prop_comment = ""
+
     demo_src = (
         "import torch\n"
         "from export_wmp_policy import WMPWorldModelStep\n"
@@ -266,10 +312,11 @@ def export_wmp(out_dir: str, actor_critic, world_model, env, runner):
         f"    obs_slice_t = torch.cat([obs[:, {priv_dim}:{priv_dim + 6}], obs[:, {priv_dim + 9}:{traj_end}]], dim=1)\n"
         "    history     = torch.roll(history, -1, dims=1)\n"
         "    history[:, -1] = obs_slice_t\n"
+        + prop_comment +
         "\n"
         "    # ── actor (every step) ───────────────────────────────────────────────\n"
         "    with torch.no_grad():\n"
-        "        actions = actor(obs, history.flatten(1), wm_feature)\n"
+        + actor_call +
         "\n"
         "    obs, done, *_ = env.step(actions)\n"
         "    is_first = done.float()\n"

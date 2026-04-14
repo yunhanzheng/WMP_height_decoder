@@ -7,7 +7,8 @@
       "Bash(python:*)",
       "Bash(UMAP_USE_FULL_STATE=true UMAP_NUM_STEPS=230 UMAP_N_NEIGHBORS=30 python:*)",
       "Bash(UMAP_NUM_STEPS=230 python:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "WebSearch"
     ]
   }
 }
