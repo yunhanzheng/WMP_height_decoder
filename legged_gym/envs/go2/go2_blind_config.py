@@ -50,12 +50,12 @@ class GO2BlindCfgPPO( LeggedRobotCfgPPO ):
         init_noise_std = 1.0
         encoder_hidden_dims = [256, 128]
         wm_encoder_hidden_dims = [64, 64]
-        actor_hidden_dims = [256, 128, 64]
+        actor_hidden_dims = [512, 128, 64]
         critic_hidden_dims = [512, 256, 128]
         latent_dim = 32 + 3
         wm_latent_dim = 32
         activation = 'elu'  # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
-        use_prop_in_actor = False  # ablation: concatenate current prop obs directly to actor input
+        use_prop_in_actor = True  # ablation: concatenate current prop obs directly to actor input
 
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01

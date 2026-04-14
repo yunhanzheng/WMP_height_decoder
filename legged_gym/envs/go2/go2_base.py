@@ -146,19 +146,19 @@ class GO2BaseCfg(LeggedRobotCfg):
     class rewards(LeggedRobotCfg.rewards):
         reward_curriculum = False
         class scales:
-            termination = -0.1
+            termination = -0.0
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
-            lin_vel_z = -0.1
-            ang_vel_xy = -0.01
-            orientation = -0.01
+            lin_vel_z = -2.0
+            ang_vel_xy = -0.05
+            orientation = -0.2
             dof_acc = -2.5e-7
             joint_power = -2e-5
-            base_height = -0.01
-            action_rate = -0.0002
-            smoothness = -0.0001
+            base_height = -1.00
+            action_rate = -0.01
+            smoothness = -0.01
             feet_air_time = 0.01
-            collision = -0.1
+            collision = -1
             feet_stumble = -0.1
             stand_still = -0.01  # Penalize motion at zero commands
 
