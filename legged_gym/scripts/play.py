@@ -57,14 +57,14 @@ def play(args):
     env_cfg.env.episode_length_s = 5 #20
     env_cfg.terrain.num_rows = 1
     env_cfg.terrain.num_cols = 1
-    env_cfg.terrain.terrain_length = 2
-    env_cfg.terrain.terrain_width = 2
+    env_cfg.terrain.terrain_length = 7
+    env_cfg.terrain.terrain_width = 7
     env_cfg.terrain.curriculum = False
-    env_cfg.terrain.difficulty = 0.1 # use 0.1 for latent heatmap
-    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    # env_cfg.terrain.difficulty = 0.1 # use 0.1 for latent heatmap
+    # env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
-    # env_cfg.terrain.difficulty = 1.0  # use 0.15 for stripe obstacle
-    # env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    env_cfg.terrain.difficulty = 0.15  # use 0.15 for stripe obstacle
+    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 
     env_cfg.noise.add_noise = False
 

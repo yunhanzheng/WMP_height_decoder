@@ -1,0 +1,421 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MuJoCo model of the Unitree Go2 quadruped robot.
+  Derived from:  resources/robots/go2/urdf/go2.urdf
+  Matches task:  go2_blind  (legged_gym/envs/go2/go2_blind_config.py)
+
+  Control: position actuators (PD control)
+    kp = 20 N·m/rad  (matches go2_base.py control.stiffness = {joint: 20})
+    kd = 0.5 N·m·s/rad (joint damping, matches control.damping = {joint: 0.5})
+
+  Timestep: 0.005 s  (matches go2_base.py sim.dt = 0.005)
+  Decimation: 4  →  policy dt = 0.02 s
+
+  The init_mujoco() helper looks for body name "base_link" via mj_name2id.
+
+  qpos layout (nq = 19):
+    [0:7]   free joint  → x y z qw qx qy qz
+    [7]     FL_hip_joint
+    [8]     FL_thigh_joint
+    [9]     FL_calf_joint
+    [10]    FR_hip_joint
+    [11]    FR_thigh_joint
+    [12]    FR_calf_joint
+    [13]    RL_hip_joint
+    [14]    RL_thigh_joint
+    [15]    RL_calf_joint
+    [16]    RR_hip_joint
+    [17]    RR_thigh_joint
+    [18]    RR_calf_joint
+
+  ctrl layout (nu = 12), same leg order:
+    ctrl[i] = 0.25 * action[i] + default_joint_angle[i]   (action_scale = 0.25)
+
+  Self-collision is disabled (matching IsaacGym self_collisions=1):
+    All robot geoms use contype=2, conaffinity=1.
+    Floor uses contype=1, conaffinity=3.
+    Robot-robot contact:  (2&1) | (2&1) = 0  → disabled.
+    Robot-floor contact:  (2&3) | (1&1) = 3  → enabled.
+-->
+<mujoco model="go2">
+
+  <compiler angle="radian"/>
+
+  <option timestep="0.005" gravity="0 0 -9.81"/>
+
+  <!-- Default properties applied to every joint and geom unless overridden -->
+  <default>
+    <joint type="hinge" limited="true" damping="0.5" armature="0.0" frictionloss="0.0"/>
+    <!-- group=3: collision geoms hidden in viewer by default; group=0 overridden on floor -->
+    <geom contype="2" conaffinity="1" friction="0.8 0.005 0.0001" rgba="0.65 0.65 0.65 1" group="3"/>
+    <position forcelimited="true" ctrllimited="true"/>
+    <!-- Visual-only mesh geoms: no collision, rendered in group 1 -->
+    <default class="visual">
+      <geom contype="0" conaffinity="0" group="1"/>
+    </default>
+  </default>
+
+  <!-- ══════════════════════════════════════════════════════════ Assets ══ -->
+  <asset>
+    <mesh name="trunk"        file="meshes/trunk.dae"/>
+    <mesh name="hip"          file="meshes/hip.dae"/>
+    <mesh name="thigh"        file="meshes/thigh.dae"/>
+    <mesh name="thigh_mirror" file="meshes/thigh_mirror.dae"/>
+    <mesh name="calf"         file="meshes/calf.dae"/>
+    <mesh name="calf_mirror"  file="meshes/calf_mirror.dae"/>
+    <mesh name="foot"         file="meshes/foot.dae"/>
+  </asset>
+
+  <!-- ═══════════════════════════════════════════════════════════ World ══ -->
+  <worldbody>
+    <light name="main_light" directional="true" diffuse="0.8 0.8 0.8" specular="0.1 0.1 0.1"
+           pos="0 0 5" dir="0 0.1 -1"/>
+
+    <!-- Flat ground.  contype=1, conaffinity=3  so all robot geoms (contype=2) touch it. -->
+    <geom name="floor" type="plane" size="20 20 0.1"
+          contype="1" conaffinity="3" friction="1.0 0.005 0.0001"
+          rgba="0.3 0.3 0.3 1" group="0"/>
+
+    <!-- ─────────────────────────────────────── Robot trunk ─────────── -->
+    <body name="base_link" pos="0 0 0.38">
+      <freejoint name="root"/>
+
+      <!--
+        Trunk inertia from URDF.
+        mass = 6.921 kg, COM at (0.021112, 0, −0.005366)
+        fullinertia: ixx iyy izz ixy ixz iyz
+      -->
+      <inertial pos="0.021112 0 -0.005366" mass="6.921"
+                fullinertia="0.02448 0.098077 0.107 0.00012166 0.0014849 -3.12e-05"/>
+
+      <!-- Trunk collision box (half-extents = URDF full / 2) -->
+      <geom name="base_collision" type="box" size="0.1881 0.04675 0.057"
+            rgba="0.7 0.7 0.7 0.9"/>
+      <geom name="trunk_vis" type="mesh" mesh="trunk" class="visual"/>
+
+      <!-- ── Head (fixed, dont_collapse="true" in URDF) ─────────────── -->
+      <body name="Head_upper" pos="0.285 0 0.01">
+        <inertial pos="0 0 0" mass="0.001" diaginertia="9.6e-06 9.6e-06 9.6e-06"/>
+        <!-- Cylinder default axis = Z; URDF orientation rpy="0 0 0" → Z-aligned -->
+        <geom name="head_upper_col" type="cylinder" size="0.05 0.045" rgba="0.5 0.5 0.5 1"/>
+
+        <body name="Head_lower" pos="0.008 0 -0.07">
+          <inertial pos="0 0 0" mass="0.001" diaginertia="9.6e-06 9.6e-06 9.6e-06"/>
+          <geom name="head_lower_col" type="sphere" size="0.047" rgba="0.5 0.5 0.5 1"/>
+        </body>
+      </body>
+
+      <!-- ══════════════════════════════ Front-Left (FL) leg ══════════ -->
+      <body name="FL_hip" pos="0.1934 0.0465 0">
+        <!--
+          URDF FL_hip_joint: parent=base, child=FL_hip
+          axis=x, range=[−1.0472, 1.0472], effort=23.7 N·m
+          hip COM: (−0.0054, 0.00194, −0.000105), m=0.678
+        -->
+        <joint name="FL_hip_joint" axis="1 0 0" range="-1.0472 1.0472"/>
+        <inertial pos="-0.0054 0.00194 -0.000105" mass="0.678"
+                  fullinertia="0.00048 0.000884 0.000596 -3.01e-06 1.11e-06 -1.42e-06"/>
+        <!--
+          Cylinder r=0.046, l=0.04  (half-length = 0.02)
+          URDF rpy="1.5708 0 0" xyz="0 0.08 0"  → cylinder axis along Y
+        -->
+        <geom name="FL_hip_col" type="cylinder" size="0.046 0.02"
+              pos="0 0.08 0" euler="1.5708 0 0"/>
+        <geom name="FL_hip_vis" type="mesh" mesh="hip" class="visual"/>
+
+        <body name="FL_thigh" pos="0 0.0955 0">
+          <!--
+            URDF FL_thigh_joint: axis=y, range=[−1.5708, 3.4907], effort=23.7 N·m
+            thigh COM: (−0.00374, −0.0223, −0.0327), m=1.152
+          -->
+          <joint name="FL_thigh_joint" axis="0 1 0" range="-1.5708 3.4907"/>
+          <inertial pos="-0.00374 -0.0223 -0.0327" mass="1.152"
+                    fullinertia="0.00584 0.0058 0.00103 8.72e-05 -0.000289 0.000808"/>
+          <!--
+            Box full=(0.213, 0.0245, 0.034) → half=(0.1065, 0.01225, 0.017)
+            URDF rpy="0 1.5708 0" xyz="0 0 −0.1065"
+          -->
+          <geom name="FL_thigh_col" type="box" size="0.1065 0.01225 0.017"
+                pos="0 0 -0.1065" euler="0 1.5708 0"/>
+          <geom name="FL_thigh_vis" type="mesh" mesh="thigh" class="visual"/>
+
+          <body name="FL_calf" pos="0 0 -0.213">
+            <!--
+              URDF FL_calf_joint: axis=y, range=[−2.7227, −0.83776], effort=45.43 N·m
+              calf COM: (0.00548, −0.000975, −0.115), m=0.154
+            -->
+            <joint name="FL_calf_joint" axis="0 1 0" range="-2.7227 -0.83776"/>
+            <inertial pos="0.00548 -0.000975 -0.115" mass="0.154"
+                      fullinertia="0.00108 0.0011 3.29e-05 3.4e-07 1.72e-05 8.28e-06"/>
+            <!--
+              Cylinder r=0.012, l=0.12 (half=0.06)
+              URDF rpy="0 −0.21 0" xyz="0.008 0 −0.06"
+            -->
+            <geom name="FL_calf_col" type="cylinder" size="0.012 0.06"
+                  pos="0.008 0 -0.06" euler="0 -0.21 0"/>
+            <geom name="FL_calf_vis" type="mesh" mesh="calf" class="visual"/>
+
+            <!-- FL foot (fixed, dont_collapse="true") -->
+            <body name="FL_foot" pos="0 0 -0.213">
+              <inertial pos="0 0 0" mass="0.04" diaginertia="9.6e-06 9.6e-06 9.6e-06"/>
+              <geom name="FL_foot_col" type="sphere" size="0.022" pos="-0.002 0 0"
+                    rgba="0.2 0.2 0.9 1"/>
+              <geom name="FL_foot_vis" type="mesh" mesh="foot" class="visual"/>
+              <site name="FL_foot_site" pos="0 0 0" size="0.01"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- ══════════════════════════════ Front-Right (FR) leg ═════════ -->
+      <body name="FR_hip" pos="0.1934 -0.0465 0">
+        <!--
+          FR hip: axis=x, range=[−1.0472, 1.0472]
+          COM: (−0.0054, −0.00194, −0.000105), m=0.678
+        -->
+        <joint name="FR_hip_joint" axis="1 0 0" range="-1.0472 1.0472"/>
+        <inertial pos="-0.0054 -0.00194 -0.000105" mass="0.678"
+                  fullinertia="0.00048 0.000884 0.000596 3.01e-06 1.11e-06 1.42e-06"/>
+        <!-- Cylinder, URDF rpy="1.5708 0 0" xyz="0 −0.08 0" -->
+        <geom name="FR_hip_col" type="cylinder" size="0.046 0.02"
+              pos="0 -0.08 0" euler="1.5708 0 0"/>
+        <!-- URDF visual origin rpy="3.1415 0 0" (180° about X, mirrored hip) -->
+        <geom name="FR_hip_vis" type="mesh" mesh="hip" euler="3.1415 0 0" class="visual"/>
+
+        <body name="FR_thigh" pos="0 -0.0955 0">
+          <!-- range=[−1.5708, 3.4907] (same as FL), COM mirrored in y -->
+          <joint name="FR_thigh_joint" axis="0 1 0" range="-1.5708 3.4907"/>
+          <inertial pos="-0.00374 0.0223 -0.0327" mass="1.152"
+                    fullinertia="0.00584 0.0058 0.00103 -8.72e-05 -0.000289 -0.000808"/>
+          <geom name="FR_thigh_col" type="box" size="0.1065 0.01225 0.017"
+                pos="0 0 -0.1065" euler="0 1.5708 0"/>
+          <geom name="FR_thigh_vis" type="mesh" mesh="thigh_mirror" class="visual"/>
+
+          <body name="FR_calf" pos="0 0 -0.213">
+            <!-- effort=45.43 N·m, COM mirrored in y -->
+            <joint name="FR_calf_joint" axis="0 1 0" range="-2.7227 -0.83776"/>
+            <inertial pos="0.00548 0.000975 -0.115" mass="0.154"
+                      fullinertia="0.00108 0.0011 3.29e-05 -3.4e-07 1.72e-05 -8.28e-06"/>
+            <!--
+              URDF FR_calf: r=0.013 (differs from FL r=0.012), rpy="0 −0.2 0" xyz="0.01 0 −0.06"
+            -->
+            <geom name="FR_calf_col" type="cylinder" size="0.013 0.06"
+                  pos="0.01 0 -0.06" euler="0 -0.2 0"/>
+            <geom name="FR_calf_vis" type="mesh" mesh="calf_mirror" class="visual"/>
+
+            <body name="FR_foot" pos="0 0 -0.213">
+              <inertial pos="0 0 0" mass="0.04" diaginertia="9.6e-06 9.6e-06 9.6e-06"/>
+              <geom name="FR_foot_col" type="sphere" size="0.022" pos="-0.002 0 0"
+                    rgba="0.2 0.2 0.9 1"/>
+              <geom name="FR_foot_vis" type="mesh" mesh="foot" class="visual"/>
+              <site name="FR_foot_site" pos="0 0 0" size="0.01"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- ══════════════════════════════ Rear-Left (RL) leg ═══════════ -->
+      <body name="RL_hip" pos="-0.1934 0.0465 0">
+        <!--
+          RL hip: same roll axis and limits as FL
+          COM: (0.0054, 0.00194, −0.000105) [note +x vs FL −x], m=0.678
+        -->
+        <joint name="RL_hip_joint" axis="1 0 0" range="-1.0472 1.0472"/>
+        <inertial pos="0.0054 0.00194 -0.000105" mass="0.678"
+                  fullinertia="0.00048 0.000884 0.000596 3.01e-06 -1.11e-06 -1.42e-06"/>
+        <geom name="RL_hip_col" type="cylinder" size="0.046 0.02"
+              pos="0 0.08 0" euler="1.5708 0 0"/>
+        <!-- URDF visual origin rpy="0 3.1415 0" (180° about Y, rear-facing hip) -->
+        <geom name="RL_hip_vis" type="mesh" mesh="hip" euler="0 3.1415 0" class="visual"/>
+
+        <body name="RL_thigh" pos="0 0.0955 0">
+          <!--
+            RL thigh range=[−0.5236, 4.5379]  (WIDER than front: rear legs can extend further)
+            COM same as FL thigh
+          -->
+          <joint name="RL_thigh_joint" axis="0 1 0" range="-0.5236 4.5379"/>
+          <inertial pos="-0.00374 -0.0223 -0.0327" mass="1.152"
+                    fullinertia="0.00584 0.0058 0.00103 8.72e-05 -0.000289 0.000808"/>
+          <geom name="RL_thigh_col" type="box" size="0.1065 0.01225 0.017"
+                pos="0 0 -0.1065" euler="0 1.5708 0"/>
+          <geom name="RL_thigh_vis" type="mesh" mesh="thigh" class="visual"/>
+
+          <body name="RL_calf" pos="0 0 -0.213">
+            <joint name="RL_calf_joint" axis="0 1 0" range="-2.7227 -0.83776"/>
+            <inertial pos="0.00548 -0.000975 -0.115" mass="0.154"
+                      fullinertia="0.00108 0.0011 3.29e-05 3.4e-07 1.72e-05 8.28e-06"/>
+            <!-- r=0.013, rpy="0 −0.2 0" xyz="0.01 0 −0.06" (same as FR) -->
+            <geom name="RL_calf_col" type="cylinder" size="0.013 0.06"
+                  pos="0.01 0 -0.06" euler="0 -0.2 0"/>
+            <geom name="RL_calf_vis" type="mesh" mesh="calf" class="visual"/>
+
+            <body name="RL_foot" pos="0 0 -0.213">
+              <inertial pos="0 0 0" mass="0.04" diaginertia="9.6e-06 9.6e-06 9.6e-06"/>
+              <geom name="RL_foot_col" type="sphere" size="0.022" pos="-0.002 0 0"
+                    rgba="0.2 0.2 0.9 1"/>
+              <geom name="RL_foot_vis" type="mesh" mesh="foot" class="visual"/>
+              <site name="RL_foot_site" pos="0 0 0" size="0.01"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- ══════════════════════════════ Rear-Right (RR) leg ══════════ -->
+      <body name="RR_hip" pos="-0.1934 -0.0465 0">
+        <!--
+          RR hip: COM mirrored in y vs RL
+          COM: (0.0054, −0.00194, −0.000105), m=0.678
+        -->
+        <joint name="RR_hip_joint" axis="1 0 0" range="-1.0472 1.0472"/>
+        <inertial pos="0.0054 -0.00194 -0.000105" mass="0.678"
+                  fullinertia="0.00048 0.000884 0.000596 -3.01e-06 -1.11e-06 1.42e-06"/>
+        <geom name="RR_hip_col" type="cylinder" size="0.046 0.02"
+              pos="0 -0.08 0" euler="1.5708 0 0"/>
+        <!-- URDF visual origin rpy="3.1415 3.1415 0" (180° about X and Y) -->
+        <geom name="RR_hip_vis" type="mesh" mesh="hip" euler="3.1415 3.1415 0" class="visual"/>
+
+        <body name="RR_thigh" pos="0 -0.0955 0">
+          <!-- range=[−0.5236, 4.5379], COM mirrored in y vs RL -->
+          <joint name="RR_thigh_joint" axis="0 1 0" range="-0.5236 4.5379"/>
+          <inertial pos="-0.00374 0.0223 -0.0327" mass="1.152"
+                    fullinertia="0.00584 0.0058 0.00103 -8.72e-05 -0.000289 -0.000808"/>
+          <geom name="RR_thigh_col" type="box" size="0.1065 0.01225 0.017"
+                pos="0 0 -0.1065" euler="0 1.5708 0"/>
+          <geom name="RR_thigh_vis" type="mesh" mesh="thigh_mirror" class="visual"/>
+
+          <body name="RR_calf" pos="0 0 -0.213">
+            <joint name="RR_calf_joint" axis="0 1 0" range="-2.7227 -0.83776"/>
+            <inertial pos="0.00548 0.000975 -0.115" mass="0.154"
+                      fullinertia="0.00108 0.0011 3.29e-05 -3.4e-07 1.72e-05 -8.28e-06"/>
+            <geom name="RR_calf_col" type="cylinder" size="0.013 0.06"
+                  pos="0.01 0 -0.06" euler="0 -0.2 0"/>
+            <geom name="RR_calf_vis" type="mesh" mesh="calf_mirror" class="visual"/>
+
+            <body name="RR_foot" pos="0 0 -0.213">
+              <inertial pos="0 0 0" mass="0.04" diaginertia="9.6e-06 9.6e-06 9.6e-06"/>
+              <geom name="RR_foot_col" type="sphere" size="0.022" pos="-0.002 0 0"
+                    rgba="0.2 0.2 0.9 1"/>
+              <geom name="RR_foot_vis" type="mesh" mesh="foot" class="visual"/>
+              <site name="RR_foot_site" pos="0 0 0" size="0.01"/>
+            </body>
+          </body>
+        </body>
+      </body>
+
+    </body>
+  </worldbody>
+
+  <!-- ═══════════════════════════════════════════════════════ Actuators ══
+    Position actuators implement: τ = kp*(ctrl − q) − kd*q̇
+    where kd comes from joint damping (set in <default>).
+
+    ctrlrange = joint position limits (target angle limits)
+    forcerange = torque limits from URDF effort field:
+      hip / thigh joints: ±23.7 N·m
+      calf joints:        ±45.43 N·m
+
+    To run the trained policy:
+      ctrl[i] = action_scale * action[i] + default_joint_angle[i]
+              = 0.25 * action[i] + default_angle[i]
+  ══════════════════════════════════════════════════════════════════════ -->
+  <actuator>
+    <!-- FL -->
+    <position name="FL_hip"   joint="FL_hip_joint"   kp="20"
+              ctrlrange="-1.0472 1.0472"   forcerange="-23.7 23.7"/>
+    <position name="FL_thigh" joint="FL_thigh_joint" kp="20"
+              ctrlrange="-1.5708 3.4907"   forcerange="-23.7 23.7"/>
+    <position name="FL_calf"  joint="FL_calf_joint"  kp="20"
+              ctrlrange="-2.7227 -0.83776" forcerange="-45.43 45.43"/>
+    <!-- FR -->
+    <position name="FR_hip"   joint="FR_hip_joint"   kp="20"
+              ctrlrange="-1.0472 1.0472"   forcerange="-23.7 23.7"/>
+    <position name="FR_thigh" joint="FR_thigh_joint" kp="20"
+              ctrlrange="-1.5708 3.4907"   forcerange="-23.7 23.7"/>
+    <position name="FR_calf"  joint="FR_calf_joint"  kp="20"
+              ctrlrange="-2.7227 -0.83776" forcerange="-45.43 45.43"/>
+    <!-- RL -->
+    <position name="RL_hip"   joint="RL_hip_joint"   kp="20"
+              ctrlrange="-1.0472 1.0472"   forcerange="-23.7 23.7"/>
+    <position name="RL_thigh" joint="RL_thigh_joint" kp="20"
+              ctrlrange="-0.5236 4.5379"   forcerange="-23.7 23.7"/>
+    <position name="RL_calf"  joint="RL_calf_joint"  kp="20"
+              ctrlrange="-2.7227 -0.83776" forcerange="-45.43 45.43"/>
+    <!-- RR -->
+    <position name="RR_hip"   joint="RR_hip_joint"   kp="20"
+              ctrlrange="-1.0472 1.0472"   forcerange="-23.7 23.7"/>
+    <position name="RR_thigh" joint="RR_thigh_joint" kp="20"
+              ctrlrange="-0.5236 4.5379"   forcerange="-23.7 23.7"/>
+    <position name="RR_calf"  joint="RR_calf_joint"  kp="20"
+              ctrlrange="-2.7227 -0.83776" forcerange="-45.43 45.43"/>
+  </actuator>
+
+  <!-- ═══════════════════════════════════════════════════════ Sensors ══
+    Useful for reconstructing the same observation vector as the policy.
+    Observation layout (proprioceptive part, 33-dim prop_dim):
+      ang_vel(3) + projected_gravity(3) + commands(3) + dof_pos(12) + dof_vel(12)
+    Last 12 dims are the previous actions (tracked externally).
+  ══════════════════════════════════════════════════════════════════════ -->
+  <sensor>
+    <!-- Base state -->
+    <framequat      name="base_quat"     objtype="body" objname="base_link"/>
+    <framelinvel    name="base_lin_vel"  objtype="body" objname="base_link"/>
+    <frameangvel    name="base_ang_vel"  objtype="body" objname="base_link"/>
+    <!-- Joint positions (dof_pos) — same order as qpos[7:] -->
+    <jointpos name="FL_hip_pos"   joint="FL_hip_joint"/>
+    <jointpos name="FL_thigh_pos" joint="FL_thigh_joint"/>
+    <jointpos name="FL_calf_pos"  joint="FL_calf_joint"/>
+    <jointpos name="FR_hip_pos"   joint="FR_hip_joint"/>
+    <jointpos name="FR_thigh_pos" joint="FR_thigh_joint"/>
+    <jointpos name="FR_calf_pos"  joint="FR_calf_joint"/>
+    <jointpos name="RL_hip_pos"   joint="RL_hip_joint"/>
+    <jointpos name="RL_thigh_pos" joint="RL_thigh_joint"/>
+    <jointpos name="RL_calf_pos"  joint="RL_calf_joint"/>
+    <jointpos name="RR_hip_pos"   joint="RR_hip_joint"/>
+    <jointpos name="RR_thigh_pos" joint="RR_thigh_joint"/>
+    <jointpos name="RR_calf_pos"  joint="RR_calf_joint"/>
+    <!-- Joint velocities (dof_vel) -->
+    <jointvel name="FL_hip_vel"   joint="FL_hip_joint"/>
+    <jointvel name="FL_thigh_vel" joint="FL_thigh_joint"/>
+    <jointvel name="FL_calf_vel"  joint="FL_calf_joint"/>
+    <jointvel name="FR_hip_vel"   joint="FR_hip_joint"/>
+    <jointvel name="FR_thigh_vel" joint="FR_thigh_joint"/>
+    <jointvel name="FR_calf_vel"  joint="FR_calf_joint"/>
+    <jointvel name="RL_hip_vel"   joint="RL_hip_joint"/>
+    <jointvel name="RL_thigh_vel" joint="RL_thigh_joint"/>
+    <jointvel name="RL_calf_vel"  joint="RL_calf_joint"/>
+    <jointvel name="RR_hip_vel"   joint="RR_hip_joint"/>
+    <jointvel name="RR_thigh_vel" joint="RR_thigh_joint"/>
+    <jointvel name="RR_calf_vel"  joint="RR_calf_joint"/>
+    <!-- Foot contact forces -->
+    <touch name="FL_foot_contact" site="FL_foot_site"/>
+    <touch name="FR_foot_contact" site="FR_foot_site"/>
+    <touch name="RL_foot_contact" site="RL_foot_site"/>
+    <touch name="RR_foot_contact" site="RR_foot_site"/>
+  </sensor>
+
+  <!-- ════════════════════════════════════════════════════ Key frames ══
+    "default" standing pose matching go2_base.py init_state.default_joint_angles.
+
+    qpos (19 values):
+      free joint (7): x y z | qw qx qy qz
+      FL:  hip=0.1  thigh=0.8  calf=−1.5
+      FR:  hip=−0.1 thigh=0.8  calf=−1.5
+      RL:  hip=0.1  thigh=1.0  calf=−1.5
+      RR:  hip=−0.1 thigh=1.0  calf=−1.5
+
+    ctrl (12 values): position targets = default_joint_angle (action=0 → target=default)
+  ══════════════════════════════════════════════════════════════════════ -->
+  <keyframe>
+    <key name="default"
+         qpos=" 0 0 0.38   1 0 0 0
+                0.1  0.8  -1.5
+               -0.1  0.8  -1.5
+                0.1  1.0  -1.5
+               -0.1  1.0  -1.5"
+         ctrl=" 0.1  0.8  -1.5
+               -0.1  0.8  -1.5
+                0.1  1.0  -1.5
+               -0.1  1.0  -1.5"/>
+  </keyframe>
+
+</mujoco>

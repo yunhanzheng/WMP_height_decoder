@@ -124,7 +124,7 @@ class WMPRunner:
         # Wandb logging
         self.use_wandb = self.cfg.get("use_wandb", True)
         if self.use_wandb:
-            wandb.login(key="9a8eac2e29b1a3f9de782fd285b2fb0c4dbe3952")
+            wandb.login(key="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")
 
             # Extract reward scales from env config if available
             reward_scales = {}
@@ -135,8 +135,8 @@ class WMPRunner:
                         reward_scales[f"reward_scales/{attr}"] = getattr(scales, attr)
 
             wandb.init(
-                project="WMP",  # Replace with your project name
-                entity="xiaoyulong97-tum",  # Your wandb username
+                project="WMP_5CM",  # Replace with your project name
+                entity="gary-guillen-chavez-technical-university-of-munich",  # Your wandb username
                 name=os.path.basename(log_dir) if log_dir else self.cfg.get("experiment_name", "run"),
                 config={**train_cfg, **reward_scales},
             )
