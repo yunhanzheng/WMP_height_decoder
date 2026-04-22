@@ -22,7 +22,7 @@ Example (all domino terrain, same as GO2 blind config):
     --output terrain.png --visualize
 
 Example (mixed curriculum):
-  python generate_terrain_heightmap.py \\
+  python generate_terrain_heightmap.py \\ 
     --terrain_proportions 0.1 0.1 0.3 0.25 0.15 0.1 \\
     --mode curriculum --num_rows 10 --num_cols 20 \\
     --output terrain_mixed.png --visualize
@@ -156,7 +156,7 @@ def discrete_obstacles_terrain_cells(terrain, min_height, max_height,
 
 
 def discrete_stripes_obstacle_terrain(terrain, height, filled_rate,
-                                      width=0.2, platform_size=3.0):
+                                      width=0.1, platform_size=3.0):
     """Horizontal stripe obstacles distributed across the terrain."""
     ps = int(platform_size / terrain.horizontal_scale)
     sw = max(1, int(width / terrain.horizontal_scale))
@@ -174,7 +174,7 @@ def discrete_stripes_obstacle_terrain(terrain, height, filled_rate,
                               cy - ps // 2:cy + ps // 2] = 0
 
 
-def discrete_one_obstacle_terrain(terrain, height, width=0.2, platform_size=3.0):
+def discrete_one_obstacle_terrain(terrain, height, width=0.1, platform_size=3.0):
     """One stripe at each end of the terrain cell."""
     ps = int(platform_size / terrain.horizontal_scale)
     sw = max(1, int(width / terrain.horizontal_scale))
@@ -296,7 +296,7 @@ class TerrainGenerator:
 
         elif choice < p[7]:
             # Edge obstacles
-            discrete_one_obstacle_terrain(t, height=0.12, width=0.2, platform_size=1.0)
+            discrete_one_obstacle_terrain(t, height=0.12, width=0.1, platform_size=1.0)
 
         else:
             # Pit
