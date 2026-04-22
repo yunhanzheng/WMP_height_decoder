@@ -1856,3 +1856,12 @@ class LeggedRobot(BaseTask):
             ).clip(min=0.0),
             dim=1,
         )
+
+    def _reward_hip_pos(self):
+        hip_indices = [0, 3, 6, 9]
+        # Calculate error: current_pos - default_pos
+        hip_error = self.dof_pos[:, hip_indices] - self.default_dof_pos[:, hip_indices]
+        # Return negative squared error (penalizes large deviations)
+        return torch.sum(torch.square(hip_error), dim=1)
+    
+    
