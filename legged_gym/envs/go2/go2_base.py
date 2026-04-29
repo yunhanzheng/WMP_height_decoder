@@ -161,7 +161,7 @@ class GO2BaseCfg(LeggedRobotCfg):
             collision = -1
             feet_stumble = -0.1
             stand_still = -0.01  # Penalize motion at zero commands
-            hip_pos = -0.01
+            hip_pos = -0.007  # Penalize hip movement to encourage more natural gaits
 
         only_positive_rewards = (
             False  # if true negative total rewards are clipped at zero (avoids early termination problems)

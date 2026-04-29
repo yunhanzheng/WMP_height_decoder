@@ -136,6 +136,8 @@ class LeggedRobot(BaseTask):
         if self.cfg.env.reference_state_initialization:
             self.amp_loader = AMPLoader(motion_files=self.cfg.env.amp_motion_files, device=self.device, time_between_frames=self.dt)
 
+        self.hip_indices = torch.tensor([0, 3, 6, 9], device=self.device, dtype=torch.long)
+
     def reset(self):
         """ Reset all robots"""
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
@@ -1858,10 +1860,14 @@ class LeggedRobot(BaseTask):
         )
 
     def _reward_hip_pos(self):
-        hip_indices = [0, 3, 6, 9]
+        
         # Calculate error: current_pos - default_pos
-        hip_error = self.dof_pos[:, hip_indices] - self.default_dof_pos[:, hip_indices]
-        # Return negative squared error (penalizes large deviations)
-        return torch.sum(torch.square(hip_error), dim=1)
+        error = torch.abs(self.dof_pos[:, self.hip_indices] - self.default_dof_pos[:, self.hip_indices])
+        # Only penalize if error > 0.1 radians (the "safe zone")
+        # This stops the "Reset Loop" for minor movements
+        margin = 0.04
+        penalty = torch.square(torch.clamp(error - margin, min=0.0))
+        
+        return torch.sum(penalty, dim=1)
     
     
