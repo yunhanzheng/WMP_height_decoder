@@ -49,6 +49,7 @@ class RSSM(nn.Module):
         unimix_ratio=0.01,
         initial="learned",
         num_actions=None,
+        num_base_vel=None,
         embed=None,
         device=None,
     ):
@@ -65,14 +66,15 @@ class RSSM(nn.Module):
         self._unimix_ratio = unimix_ratio
         self._initial = initial
         self._num_actions = num_actions
+        self._num_base_vel = num_base_vel
         self._embed = embed
         self._device = device
 
         inp_layers = []
         if self._discrete:
-            inp_dim = self._stoch * self._discrete + num_actions
+            inp_dim = self._stoch * self._discrete + num_actions + num_base_vel
         else:
-            inp_dim = self._stoch + num_actions
+            inp_dim = self._stoch + num_actions + num_base_vel
         inp_layers.append(nn.Linear(inp_dim, self._hidden, bias=False))
         if norm:
             inp_layers.append(nn.LayerNorm(self._hidden, eps=1e-03))
@@ -147,16 +149,16 @@ class RSSM(nn.Module):
         else:
             raise NotImplementedError(self._initial)
 
-    def observe(self, embed, action, is_first, state=None):
+    def observe(self, embed, action, base_vel, is_first, state=None):
         swap = lambda x: x.permute([1, 0] + list(range(2, len(x.shape))))
         # (batch, time, ch) -> (time, batch, ch)
-        embed, action, is_first = swap(embed), swap(action), swap(is_first)
+        embed, action, base_vel, is_first = swap(embed), swap(action), swap(base_vel), swap(is_first)
         # prev_state[0] means selecting posterior of return(posterior, prior) from obs_step
         post, prior = tools.static_scan(
-            lambda prev_state, prev_act, embed, is_first: self.obs_step(
-                prev_state[0], prev_act, embed, is_first
+            lambda prev_state, prev_act, prev_base_vel, embed, is_first: self.obs_step(
+                prev_state[0], prev_act, prev_base_vel, embed, is_first
             ),
-            (action, embed, is_first),
+            (action, base_vel, embed, is_first),
             (state, state),
         )
 
@@ -165,12 +167,14 @@ class RSSM(nn.Module):
         prior = {k: swap(v) for k, v in prior.items()}
         return post, prior
 
-    def imagine_with_action(self, action, state):
+    def imagine_with_action(self, action, base_vel, state):
         swap = lambda x: x.permute([1, 0] + list(range(2, len(x.shape))))
         assert isinstance(state, dict), state
         action = action
+        base_vel = base_vel
         action = swap(action)
-        prior = tools.static_scan(self.img_step, [action], state)
+        base_vel = swap(base_vel)
+        prior = tools.static_scan(self.img_step, [action, base_vel], state)
         prior = prior[0]
         prior = {k: swap(v) for k, v in prior.items()}
         return prior
@@ -198,17 +202,21 @@ class RSSM(nn.Module):
             )
         return dist
 
-    def obs_step(self, prev_state, prev_action, embed, is_first, sample=True):
+    def obs_step(self, prev_state, prev_action, prev_base_vel, embed, is_first, sample=True):
         # initialize all prev_state
         if prev_state == None or torch.sum(is_first) == len(is_first):
             prev_state = self.initial(len(is_first))
             prev_action = torch.zeros((len(is_first), self._num_actions)).to(
                 self._device
             )
+            prev_base_vel = torch.zeros((len(is_first), self._num_base_vel)).to(
+                self._device
+            )
         # overwrite the prev_state only where is_first=True
         elif torch.sum(is_first) > 0:
             is_first = is_first[:, None]
             prev_action *= 1.0 - is_first
+            prev_base_vel *= 1.0 - is_first
             init_state = self.initial(len(is_first))
             for key, val in prev_state.items():
                 is_first_r = torch.reshape(
@@ -219,7 +227,7 @@ class RSSM(nn.Module):
                     val * (1.0 - is_first_r) + init_state[key] * is_first_r
                 )
 
-        prior = self.img_step(prev_state, prev_action)
+        prior = self.img_step(prev_state, prev_action, prev_base_vel)
         x = torch.cat([prior["deter"], embed], -1)
         # (batch_size, prior_deter + embed) -> (batch_size, hidden)
         x = self._obs_out_layers(x)
@@ -232,16 +240,16 @@ class RSSM(nn.Module):
         post = {"stoch": stoch, "deter": prior["deter"], **stats}
         return post, prior
 
-    def img_step(self, prev_state, prev_action, sample=True):
+    def img_step(self, prev_state, prev_action, prev_base_vel, sample=True):
         # (batch, stoch, discrete_num)
         prev_stoch = prev_state["stoch"]
         if self._discrete:
             shape = list(prev_stoch.shape[:-2]) + [self._stoch * self._discrete]
             # (batch, stoch, discrete_num) -> (batch, stoch * discrete_num)
             prev_stoch = prev_stoch.reshape(shape)
-        # (batch, stoch * discrete_num) -> (batch, stoch * discrete_num + action)
-        x = torch.cat([prev_stoch, prev_action], -1)
-        # (batch, stoch * discrete_num + action, embed) -> (batch, hidden)
+        # (batch, stoch * discrete_num) -> (batch, stoch * discrete_num + action + base_vel)
+        x = torch.cat([prev_stoch, prev_action, prev_base_vel], -1)
+        # (batch, stoch * discrete_num + action + base_vel, embed) -> (batch, hidden)
         x = self._img_in_layers(x)
         for _ in range(self._rec_depth):  # rec depth is not correctly implemented
             deter = prev_state["deter"]

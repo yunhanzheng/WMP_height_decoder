@@ -175,6 +175,8 @@ class WMPRunner:
         if (self.wm_config.wm_device != 'None'):
             self.wm_config.device = self.wm_config.wm_device
         self.wm_config.num_actions = self.wm_config.num_actions * self.env.cfg.depth.update_interval
+        # Add base velocity to world model input
+        self.wm_config.num_base_vel = self.wm_config.num_base_vel * self.env.cfg.depth.update_interval
         prop_dim = self.env.num_obs - self.env.privileged_dim - self.env.height_dim - self.env.num_actions
         image_shape = self.env.cfg.depth.resized + (1,)
         obs_shape = {'prop': (prop_dim,), 'image': image_shape,}
@@ -217,7 +219,7 @@ class WMPRunner:
 
         # init world model input
         sum_wm_dataset_size = 0
-        wm_latent = wm_action = None
+        wm_latent = wm_action = wm_base_vel = None
         wm_is_first = torch.ones(self.env.num_envs, device=self._world_model.device)
         wm_obs = {
             "prop": obs[:, self.env.privileged_dim: self.env.privileged_dim + self.env.cfg.env.prop_dim].to(self._world_model.device),
@@ -230,6 +232,8 @@ class WMPRunner:
         wm_metrics = None
         self.wm_update_interval = self.env.cfg.depth.update_interval
         wm_action_history = torch.zeros(size=(self.env.num_envs, self.wm_update_interval, self.env.num_actions),
+                                        device=self._world_model.device)
+        wm_base_vel_history = torch.zeros(size=(self.env.num_envs, self.wm_update_interval, self.env.num_base_vel),
                                         device=self._world_model.device)
         wm_reward = torch.zeros(self.env.num_envs, device=self._world_model.device)
         wm_feature = torch.zeros((self.env.num_envs, self.wm_feature_dim))
@@ -247,7 +251,7 @@ class WMPRunner:
                     if (self.env.global_counter % self.wm_update_interval == 0):
                         # world model obs step
                         wm_embed = self._world_model.encoder(wm_obs)
-                        wm_latent, _ = self._world_model.dynamics.obs_step(wm_latent, wm_action, wm_embed,
+                        wm_latent, _ = self._world_model.dynamics.obs_step(wm_latent, wm_action, wm_base_vel, wm_embed,
                                                                            wm_obs["is_first"])
                         wm_feature = self._world_model.dynamics.get_deter_feat(wm_latent)
                         wm_is_first[:] = 0
@@ -255,6 +259,8 @@ class WMPRunner:
                     history = self.trajectory_history.flatten(1).to(self.device)
                     actions = self.alg.act(obs, critic_obs, history, wm_feature.to(self.env.device))
                     obs, privileged_obs, rewards, dones, infos, reset_env_ids, _ = self.env.step(actions)
+                    # Add base velocity to world model input
+                    base_vel = obs[:, self.env.privileged_dim - 3: self.env.privileged_dim].to(self._world_model.device)
 
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs, rewards, dones = obs.to(self.device), critic_obs.to(
@@ -263,6 +269,8 @@ class WMPRunner:
                     # update world model input
                     wm_action_history = torch.concat(
                         (wm_action_history[:, 1:], actions.unsqueeze(1).to(self._world_model.device)), dim=1)
+                    wm_base_vel_history = torch.concat(
+                        (wm_base_vel_history[:, 1:], base_vel.unsqueeze(1).to(self._world_model.device)), dim=1)
                     wm_obs = {
                         "prop": obs[:, self.env.privileged_dim: self.env.privileged_dim + self.env.cfg.env.prop_dim].to(self._world_model.device),
                         "is_first": wm_is_first,
@@ -285,9 +293,11 @@ class WMPRunner:
                         sum_wm_dataset_size = np.sum(self.wm_dataset_size)
 
                         wm_action_history[reset_env_ids, :] = 0
+                        wm_base_vel_history[reset_env_ids, :] = 0
                         wm_is_first[reset_env_ids] = 1
 
                     wm_action = wm_action_history.flatten(1)
+                    wm_base_vel = wm_base_vel_history.flatten(1)
                     wm_reward += rewards.to(self._world_model.device)
 
                     # store current step into buffer
@@ -309,6 +319,8 @@ class WMPRunner:
                                     self.wm_buffer[k][not_reset_env_ids, self.wm_buffer_index[not_reset_env_ids], :] = v[not_reset_env_ids].to('cpu')
                             self.wm_buffer["action"][not_reset_env_ids, self.wm_buffer_index[not_reset_env_ids], :] = \
                                 wm_action[not_reset_env_ids, :].to('cpu')
+                            self.wm_buffer["base_vel"][not_reset_env_ids, self.wm_buffer_index[not_reset_env_ids], :] = \
+                                wm_base_vel[not_reset_env_ids, :].to('cpu')
                             self.wm_buffer["reward"][not_reset_env_ids, self.wm_buffer_index[not_reset_env_ids]] = \
                                 wm_reward[not_reset_env_ids].to('cpu')
                             self.wm_buffer_index[not_reset_env_ids] += 1
@@ -381,6 +393,8 @@ class WMPRunner:
                                 device=self._world_model.device),
             "action": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,
                                    self.env.num_actions * self.wm_update_interval), device=self._world_model.device),
+            "base_vel": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,
+                                   self.env.num_base_vel * self.wm_update_interval), device=self._world_model.device),
             "reward": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,),
                                   device=self._world_model.device),
         }
@@ -398,6 +412,8 @@ class WMPRunner:
                                 device='cpu'),
             "action": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,
                                    self.env.num_actions * self.wm_update_interval), device='cpu'),
+            "base_vel": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,
+                                   self.env.num_base_vel * self.wm_update_interval), device='cpu'),
             "reward": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,),
                                   device='cpu'),
         }

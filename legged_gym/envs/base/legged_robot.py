@@ -81,8 +81,10 @@ class LeggedRobot(BaseTask):
             device_id (int): 0, 1, ...
             headless (bool): Run without rendering if True
         """
+        # Number of base velocity features (vx, vy, wz)
+        
         self.cfg = cfg
-
+        
         # get terrain type idx
         self.wave_start_idx = 0
         self.wave_end_idx = math.ceil(self.cfg.env.num_envs * sum(self.cfg.terrain.terrain_proportions[:1]))

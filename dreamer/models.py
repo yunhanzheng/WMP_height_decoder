@@ -55,6 +55,7 @@ class WorldModel(nn.Module):
             config.unimix_ratio,
             config.initial,
             config.num_actions,
+            config.num_base_vel,
             self.embed_size,
             config.device,
         )
@@ -125,7 +126,7 @@ class WorldModel(nn.Module):
             with torch.cuda.amp.autocast(self._use_amp):
                 embed = self.encoder(data)
                 post, prior = self.dynamics.observe(
-                    embed, data["action"], data["is_first"]
+                    embed, data["action"], data["base_vel"], data["is_first"]
                 )
                 kl_free = self._config.kl_free
                 dyn_scale = self._config.dyn_scale
@@ -202,7 +203,7 @@ class WorldModel(nn.Module):
         embed = self.encoder(data)
 
         states, _ = self.dynamics.observe(
-            embed[:6, :5], data["action"][:6, :5], data["is_first"][:6, :5]
+            embed[:6, :5], data["action"][:6, :5], data["base_vel"][:6, :5], data["is_first"][:6, :5]
         )
         recon = self.heads["decoder"](self.dynamics.get_feat(states))["image"].mode()[
             :6

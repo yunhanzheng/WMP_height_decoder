@@ -9,12 +9,12 @@ class GO2BaseCfg(LeggedRobotCfg):
 
         border_size = 25
         mesh_type = "trimesh"
-        terrain_length = 7.5
-        terrain_width = 7.5
-        num_rows = 10  # number of terrain rows (levels)
-        num_cols = 10  # number of terrain cols (types)
+        terrain_length = 15.0
+        terrain_width = 15.0
+        num_rows = 5  # number of terrain rows (levels)
+        num_cols = 5  # number of terrain cols (types)
         measure_heights = True
-        max_init_terrain_level = 5  # starting curriculum state
+        max_init_terrain_level = 3  # starting curriculum state
         measured_points_x = [
             -0.8,
             -0.7,

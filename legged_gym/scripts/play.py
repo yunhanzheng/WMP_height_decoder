@@ -54,17 +54,17 @@ def play(args):
     # override some parameters for testing
     # env_cfg.env.num_envs = min(env_cfg.env.num_envs, 50)
     env_cfg.env.num_envs = 1
-    env_cfg.env.episode_length_s = 5 #20
+    env_cfg.env.episode_length_s = 10 #20
     env_cfg.terrain.num_rows = 1
     env_cfg.terrain.num_cols = 1
-    env_cfg.terrain.terrain_length = 7
-    env_cfg.terrain.terrain_width = 7
+    env_cfg.terrain.terrain_length = 8
+    env_cfg.terrain.terrain_width = 8
     env_cfg.terrain.curriculum = False
-    # env_cfg.terrain.difficulty = 0.1 # use 0.1 for latent heatmap
-    # env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    env_cfg.terrain.difficulty = 0.1 # use 0.1 for latent heatmap
+    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
-    env_cfg.terrain.difficulty = 0.15  # use 0.15 for stripe obstacle
-    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    # env_cfg.terrain.difficulty = 0.15  # use 0.15 for stripe obstacle
+    # env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 
     env_cfg.noise.add_noise = False
 
@@ -91,7 +91,7 @@ def play(args):
     env_cfg.domain_rand.stiffness_multiplier_range = [1.0, 1.0]
     env_cfg.domain_rand.damping_multiplier_range = [1.0, 1.0]
 
-    env_cfg.commands.ranges.lin_vel_x = [1.0, 1.0]
+    env_cfg.commands.ranges.lin_vel_x = [0.5, 0.5]
     env_cfg.commands.ranges.lin_vel_y = [0.0, 0.0]
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
     env_cfg.commands.ranges.heading = [0.0, 0.0]
@@ -270,11 +270,13 @@ def play(args):
 
         # Initialize world model
         world_model = ppo_runner._world_model.to(env.device)
-        wm_latent = wm_action = None
+        wm_latent = wm_action = wm_base_vel = None
         wm_is_first = torch.ones(env.num_envs, device=env.device)
         wm_update_interval = env.cfg.depth.update_interval
         wm_action_history = torch.zeros(size=(env.num_envs, wm_update_interval, env.num_actions),
                                         device=env.device)
+        wm_base_vel_history = torch.zeros(size=(env.num_envs, wm_update_interval, env.num_base_vel),
+                                         device=env.device)
         wm_obs = {
             "prop": obs[:, env.privileged_dim: env.privileged_dim + env.cfg.env.prop_dim],
             "is_first": wm_is_first,
@@ -369,7 +371,7 @@ def play(args):
                     wm_obs["image"][env.depth_index] = infos["depth"].unsqueeze(-1).to(world_model.device)
 
                 wm_embed = world_model.encoder(wm_obs)
-                wm_latent, _ = world_model.dynamics.obs_step(wm_latent, wm_action, wm_embed, wm_obs["is_first"], sample=True)
+                wm_latent, _ = world_model.dynamics.obs_step(wm_latent, wm_action, wm_base_vel, wm_embed, wm_obs["is_first"], sample=True)
                 wm_feature = world_model.dynamics.get_deter_feat(wm_latent)
                 wm_is_first[:] = 0
 
@@ -441,6 +443,9 @@ def play(args):
                 # Use zero actions of the correct WM size (update_interval * num_actions from config)
                 wm_num_actions = env.cfg.depth.update_interval * env.num_actions
                 zero_wm_action = torch.zeros(env.num_envs, wm_num_actions, device=env.device)
+                wm_num_base_vel = env.cfg.depth.update_interval * env.num_base_vel
+                zero_wm_base_vel = torch.zeros(env.num_envs, wm_num_base_vel, device=env.device)
+
                 with torch.enable_grad():
                     wm_state = {k: v.detach() for k, v in wm_latent.items()} if wm_latent is not None else None
                     for h in range(history_length):
@@ -449,7 +454,7 @@ def play(args):
                         wm_obs_h = {"prop": prop_h, "is_first": is_not_first}
                         wm_embed_h = world_model.encoder(wm_obs_h)
                         wm_state, _ = world_model.dynamics.obs_step(
-                            wm_state, zero_wm_action, wm_embed_h, is_not_first, sample=False)
+                            wm_state, zero_wm_action, zero_wm_base_vel, wm_embed_h, is_not_first, sample=False)
                     wm_feat_unrolled = world_model.dynamics.get_deter_feat(wm_state)  # (num_envs, 512)
                     r_vec = ppo_runner.alg.actor_critic.wm_feature_encoder(wm_feat_unrolled)[robot_index]  # (32,)
                     r_vec.sum().backward()
@@ -500,7 +505,7 @@ def play(args):
                 if rl_foot_body_idx is not None else 0.0)
 
         obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
-
+        base_vel = obs[:, env.privileged_dim - 3: env.privileged_dim].to(world_model.device)
         if SLOW_MOTION:
             time.sleep(0.05)
 
@@ -511,6 +516,8 @@ def play(args):
         if use_world_model:
             wm_action_history = torch.concat(
                 (wm_action_history[:, 1:], actions.unsqueeze(1)), dim=1)
+            wm_base_vel_history = torch.concat(
+                (wm_base_vel_history[:, 1:], base_vel.unsqueeze(1)), dim=1)
             wm_obs = {
                 "prop": obs[:, env.privileged_dim: env.privileged_dim + env.cfg.env.prop_dim],
                 "is_first": wm_is_first,
@@ -522,9 +529,11 @@ def play(args):
             reset_env_ids = reset_env_ids.cpu().numpy()
             if (len(reset_env_ids) > 0):
                 wm_action_history[reset_env_ids, :] = 0
+                wm_base_vel_history[reset_env_ids, :] = 0
                 wm_is_first[reset_env_ids] = 1
 
             wm_action = wm_action_history.flatten(1)
+            wm_base_vel = wm_base_vel_history.flatten(1)
 
         # process trajectory history
         if use_world_model:
