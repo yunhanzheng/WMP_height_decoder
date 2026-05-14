@@ -5,7 +5,7 @@ class GO2BaseCfg(LeggedRobotCfg):
 
     class terrain(LeggedRobotCfg.terrain):
         # domino terrain
-        terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+        terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
         border_size = 25
         mesh_type = "trimesh"

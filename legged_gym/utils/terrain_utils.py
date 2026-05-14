@@ -257,6 +257,7 @@ def discrete_stripes_obstacle_terrain(terrain, height, filled_rate, width=0.1, p
     terrain.height_field_raw[x1:x2, y1:y2] = 0
     return terrain
 
+
 def discrete_one_obstacle_terrain(terrain, height, width=0.2, platform_size=3.0):
     """
     Generate a terrain with only two stripes at each edge (start and end)
@@ -327,6 +328,36 @@ def discrete_obstacles_terrain_cells(
     y1 = (terrain.length - platform_size) // 2
     y2 = (terrain.length + platform_size) // 2
     terrain.height_field_raw[x1:x2, y1:y2] = 0
+    return terrain
+
+
+def full_lenght_obstacle_terrain(terrain, min_height, max_height, num_rects, width=0.1, platform_size=3.0):
+    """
+    Generate a terrain with one full lenght obstacle
+    
+    Parameters: 
+        terrain (terrain): the terrain
+        max_height (float): maximum height of the obstacle [meters]
+        width (float): width of the obstacle [meters]
+        platform_size (float): size of the flat platform at the center of the terrain [meters]
+    """
+
+    platform_size = int(platform_size / terrain.horizontal_scale)
+    width = int(width / terrain.horizontal_scale)
+    height = (min_height + np.random.rand() * (max_height - min_height)) / terrain.vertical_scale
+
+    (i, j) = terrain.height_field_raw.shape
+    for _ in range(num_rects):
+
+        start_i = np.random.choice(range(0, i - width, 8))
+        terrain.height_field_raw[start_i: start_i + width, :] = height
+    
+    x1 = (terrain.width - platform_size) // 2
+    x2 = (terrain.width + platform_size) // 2
+    y1 = (terrain.length - platform_size) // 2
+    y2 = (terrain.length + platform_size) // 2
+    terrain.height_field_raw[x1:x2, y1:y2] = 0
+
     return terrain
 
 

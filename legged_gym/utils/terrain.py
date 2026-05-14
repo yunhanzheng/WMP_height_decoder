@@ -291,6 +291,19 @@ class Terrain:
                 width=0.1,
                 platform_size=1.0
             )
+
+        elif choice < self.proportions[8]:
+            # Full lenght striped terrain
+            num_rectangles = int(60 * difficulty)
+            rectangle_min_size = 2 * obs_scale
+            rectangle_max_size = 10 * obs_scale
+            print("num rectangles: ", num_rectangles)
+            terrain_utils.full_lenght_obstacle_terrain(
+                terrain,
+                0.10,
+                0.15,
+                num_rects=num_rectangles,
+            )
         else:
             pit_terrain(terrain, depth=pit_depth, platform_size=4.0)
 
