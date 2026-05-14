@@ -8,7 +8,7 @@ class GO2BlindCfg(GO2BaseCfg):
     class env(LeggedRobotCfg.env):
         num_envs = 4096
         include_history_steps = None  # Number of steps of history to include.
-        prop_dim = 33 # proprioception
+        prop_dim = 37 # proprioception (ang_vel(3) + gravity(3) + commands(3) + dof_pos(12) + dof_vel(12) + binary_feet_contact(4))
         action_dim = 12
         privileged_dim = 24 + 26 + 3  # privileged_obs[:,:privileged_dim] is the privileged information in privileged_obs, include 3-dim base linear vel
         height_dim = 187  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs

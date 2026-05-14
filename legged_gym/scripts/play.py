@@ -54,15 +54,15 @@ def play(args):
     # override some parameters for testing
     # env_cfg.env.num_envs = min(env_cfg.env.num_envs, 50)
     env_cfg.env.num_envs = 1
-    env_cfg.env.episode_length_s = 10 #20
-    env_cfg.terrain.num_rows = 1
+    env_cfg.env.episode_length_s = 5 #20
+    env_cfg.terrain.num_rows = 10
     env_cfg.terrain.num_cols = 1
-    env_cfg.terrain.terrain_length = 8
-    env_cfg.terrain.terrain_width = 8
+    env_cfg.terrain.terrain_length = 7.5
+    env_cfg.terrain.terrain_width = 7.5
     env_cfg.terrain.curriculum = False
-    env_cfg.terrain.difficulty = 0.1 # use 0.1 for latent heatmap
+    env_cfg.terrain.difficulty = 0.5 # use 0.1 for latent heatmap
     env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
-    env_cfg.init_state.pos = [7.5, 0.0, 0.38]
+    env_cfg.init_state.pos = [0.0, 0.0, 0.38]
 
     # env_cfg.terrain.difficulty = 0.15  # use 0.15 for stripe obstacle
     # env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
@@ -92,7 +92,7 @@ def play(args):
     env_cfg.domain_rand.stiffness_multiplier_range = [1.0, 1.0]
     env_cfg.domain_rand.damping_multiplier_range = [1.0, 1.0]
 
-    env_cfg.commands.ranges.lin_vel_x = [0.5, 0.5]
+    env_cfg.commands.ranges.lin_vel_x = [1.0, 1.0]
     env_cfg.commands.ranges.lin_vel_y = [0.0, 0.0]
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
     env_cfg.commands.ranges.heading = [0.0, 0.0]
@@ -309,6 +309,31 @@ def play(args):
         front_feet_mask = torch.tensor(['FL' in n or 'FR' in n for n in feet_names_ordered],
                                        dtype=torch.bool, device=env.device)
         front_feet_indices = env.feet_indices[front_feet_mask]
+        
+        # Track xy force norm for all four feet if plotting requested
+        if PLOT_FORCE_XY:
+            # Separate FL, FR, RL, RR indices
+            fl_mask = torch.tensor(['FL' in n for n in feet_names_ordered], dtype=torch.bool, device=env.device)
+            fr_mask = torch.tensor(['FR' in n for n in feet_names_ordered], dtype=torch.bool, device=env.device)
+            rl_mask = torch.tensor(['RL' in n for n in feet_names_ordered], dtype=torch.bool, device=env.device)
+            rr_mask = torch.tensor(['RR' in n for n in feet_names_ordered], dtype=torch.bool, device=env.device)
+            fl_foot_indices = env.feet_indices[fl_mask]
+            fr_foot_indices = env.feet_indices[fr_mask]
+            rl_foot_indices = env.feet_indices[rl_mask]
+            rr_foot_indices = env.feet_indices[rr_mask]
+            fl_force_xy_history = []
+            fr_force_xy_history = []
+            rl_force_xy_history = []
+            rr_force_xy_history = []
+        else:
+            fl_foot_indices = None
+            fr_foot_indices = None
+            rl_foot_indices = None
+            rr_foot_indices = None
+            fl_force_xy_history = None
+            fr_force_xy_history = None
+            rl_force_xy_history = None
+            rr_force_xy_history = None
 
         # _reward_collision uses penalised_contact_indices — keep only FL/FR bodies
         if hasattr(env, 'penalised_contact_indices'):
@@ -340,7 +365,7 @@ def play(args):
         rl_foot_z_history = []
         obstacle_x = None
         rl_foot_x_history = []
-        if VISUALIZE_SENSITIVITY:
+        if VISUALIZE_SENSITIVITY or PLOT_FORCE_XY:
             _body_names = env.gym.get_actor_rigid_body_names(env.envs[0], env.actor_handles[0])
             fl_foot_body_idx = next(
                 (idx for idx, n in enumerate(_body_names) if 'FL' in n and 'foot' in n.lower()), None)
@@ -350,6 +375,31 @@ def play(args):
             front_feet_mask = torch.tensor(
                 ['FL' in n or 'FR' in n for n in feet_names_ordered], dtype=torch.bool, device=env.device)
             front_feet_indices = env.feet_indices[front_feet_mask]
+            
+            # Separate FL, FR, RL, RR for force tracking
+            if PLOT_FORCE_XY:
+                fl_mask = torch.tensor(['FL' in n for n in feet_names_ordered], dtype=torch.bool, device=env.device)
+                fr_mask = torch.tensor(['FR' in n for n in feet_names_ordered], dtype=torch.bool, device=env.device)
+                rl_mask = torch.tensor(['RL' in n for n in feet_names_ordered], dtype=torch.bool, device=env.device)
+                rr_mask = torch.tensor(['RR' in n for n in feet_names_ordered], dtype=torch.bool, device=env.device)
+                fl_foot_indices = env.feet_indices[fl_mask]
+                fr_foot_indices = env.feet_indices[fr_mask]
+                rl_foot_indices = env.feet_indices[rl_mask]
+                rr_foot_indices = env.feet_indices[rr_mask]
+                fl_force_xy_history = []
+                fr_force_xy_history = []
+                rl_force_xy_history = []
+                rr_force_xy_history = []
+            else:
+                fl_foot_indices = None
+                fr_foot_indices = None
+                rl_foot_indices = None
+                rr_foot_indices = None
+                fl_force_xy_history = None
+                fr_force_xy_history = None
+                rl_force_xy_history = None
+                rr_force_xy_history = None
+            
             if hasattr(env, 'penalised_contact_indices'):
                 pen_names = [_body_names[idx] for idx in env.penalised_contact_indices.tolist()]
                 front_pen_mask = torch.tensor(
@@ -362,6 +412,10 @@ def play(args):
             rl_foot_body_idx = None
             front_feet_indices = torch.tensor([], dtype=torch.long, device='cpu')
             front_pen_indices = None
+            fl_foot_indices = None
+            fr_foot_indices = None
+            fl_force_xy_history = None
+            fr_force_xy_history = None
 
     total_reward = 0
     not_dones = torch.ones((env.num_envs,), device=env.device)
@@ -504,6 +558,28 @@ def play(args):
             rl_foot_z_history.append(
                 env.rigid_body_pos[robot_index, rl_foot_body_idx, 2].item()
                 if rl_foot_body_idx is not None else 0.0)
+        
+        # Track xy force norm for all four feet
+        if PLOT_FORCE_XY and fl_force_xy_history is not None:
+            # Get xy contact forces for FL foot
+            fl_forces = env.contact_forces[robot_index, fl_foot_indices, :2]  # shape: (num_fl_feet, 2)
+            fl_force_xy_norm = torch.norm(fl_forces, dim=-1).mean().item()  # average over FL feet
+            fl_force_xy_history.append(fl_force_xy_norm)
+            
+            # Get xy contact forces for FR foot
+            fr_forces = env.contact_forces[robot_index, fr_foot_indices, :2]  # shape: (num_fr_feet, 2)
+            fr_force_xy_norm = torch.norm(fr_forces, dim=-1).mean().item()  # average over FR feet
+            fr_force_xy_history.append(fr_force_xy_norm)
+            
+            # Get xy contact forces for RL foot
+            rl_forces = env.contact_forces[robot_index, rl_foot_indices, :2]  # shape: (num_rl_feet, 2)
+            rl_force_xy_norm = torch.norm(rl_forces, dim=-1).mean().item()  # average over RL feet
+            rl_force_xy_history.append(rl_force_xy_norm)
+            
+            # Get xy contact forces for RR foot
+            rr_forces = env.contact_forces[robot_index, rr_foot_indices, :2]  # shape: (num_rr_feet, 2)
+            rr_force_xy_norm = torch.norm(rr_forces, dim=-1).mean().item()  # average over RR feet
+            rr_force_xy_history.append(rr_force_xy_norm)
 
         obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
         base_vel = obs[:, env.privileged_dim - 3: env.privileged_dim].to(world_model.device)
@@ -580,7 +656,8 @@ def play(args):
                     'base_vel_y': env.base_lin_vel[robot_index, 1].item(),
                     'base_vel_z': env.base_lin_vel[robot_index, 2].item(),
                     'base_vel_yaw': env.base_ang_vel[robot_index, 2].item(),
-                    'contact_forces_z': env.contact_forces[robot_index, env.feet_indices, 2].cpu().numpy()
+                    'contact_forces_z': env.contact_forces[robot_index, env.feet_indices, 2].cpu().numpy(),
+                    'binary_feet_contact': env.binary_feet_contact[robot_index].cpu().numpy()
                 }
             )
         if  0 < i < stop_rew_log:
@@ -694,6 +771,127 @@ def play(args):
             first_event_step=first_event_step,
             save_path=os.path.join(log_dir, 'lookahead_ccf.pdf'),
         )
+    
+    # Plot xy force norm for all four feet with gradient analysis
+    if PLOT_FORCE_XY and fl_force_xy_history and fr_force_xy_history and rl_force_xy_history and rr_force_xy_history:
+        log_dir = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name)
+        os.makedirs(log_dir, exist_ok=True)
+        
+        fl_force_array = np.array(fl_force_xy_history)
+        fr_force_array = np.array(fr_force_xy_history)
+        rl_force_array = np.array(rl_force_xy_history)
+        rr_force_array = np.array(rr_force_xy_history)
+        time_steps = np.arange(len(fl_force_array))
+        
+        # Calculate gradients
+        fl_gradient = np.gradient(fl_force_array)
+        fr_gradient = np.gradient(fr_force_array)
+        rl_gradient = np.gradient(rl_force_array)
+        rr_gradient = np.gradient(rr_force_array)
+        fl_high_gradient_steps = np.where(np.abs(fl_gradient) > 500)[0]
+        fr_high_gradient_steps = np.where(np.abs(fr_gradient) > 500)[0]
+        rl_high_gradient_steps = np.where(np.abs(rl_gradient) > 500)[0]
+        rr_high_gradient_steps = np.where(np.abs(rr_gradient) > 500)[0]
+        
+        # Create plot with 8 subplots (4 rows, 2 cols) - force norms on left, gradients on right
+        fig, axes = plt.subplots(4, 2, figsize=(16, 20))
+        
+        # Plot FL force norm and gradient
+        axes[0, 0].plot(time_steps, fl_force_array, 'b-', linewidth=1.5, label='FL XY Force Norm')
+        axes[0, 0].set_ylabel('Force Norm (N)', fontsize=12)
+        axes[0, 0].set_title('FL Foot XY Force Norm', fontsize=14)
+        axes[0, 0].grid(True, alpha=0.3)
+        axes[0, 0].legend()
+        for step in fl_high_gradient_steps:
+            axes[0, 0].axvline(x=step, color='r', linestyle='--', alpha=0.5, linewidth=0.8)
+        
+        axes[0, 1].plot(time_steps, fl_gradient, 'b-', linewidth=1.5, label='FL Gradient')
+        axes[0, 1].axhline(y=500, color='k', linestyle=':', alpha=0.5, label='Threshold (±500)')
+        axes[0, 1].axhline(y=-500, color='k', linestyle=':', alpha=0.5)
+        axes[0, 1].set_ylabel('Gradient (N/step)', fontsize=12)
+        axes[0, 1].set_title('FL Force Gradient', fontsize=14)
+        axes[0, 1].grid(True, alpha=0.3)
+        axes[0, 1].legend()
+        for step in fl_high_gradient_steps:
+            axes[0, 1].axvline(x=step, color='r', linestyle='--', alpha=0.5, linewidth=0.8)
+        
+        # Plot FR force norm and gradient
+        axes[1, 0].plot(time_steps, fr_force_array, 'g-', linewidth=1.5, label='FR XY Force Norm')
+        axes[1, 0].set_ylabel('Force Norm (N)', fontsize=12)
+        axes[1, 0].set_title('FR Foot XY Force Norm', fontsize=14)
+        axes[1, 0].grid(True, alpha=0.3)
+        axes[1, 0].legend()
+        for step in fr_high_gradient_steps:
+            axes[1, 0].axvline(x=step, color='r', linestyle='--', alpha=0.5, linewidth=0.8)
+        
+        axes[1, 1].plot(time_steps, fr_gradient, 'g-', linewidth=1.5, label='FR Gradient')
+        axes[1, 1].axhline(y=500, color='k', linestyle=':', alpha=0.5, label='Threshold (±500)')
+        axes[1, 1].axhline(y=-500, color='k', linestyle=':', alpha=0.5)
+        axes[1, 1].set_ylabel('Gradient (N/step)', fontsize=12)
+        axes[1, 1].set_title('FR Force Gradient', fontsize=14)
+        axes[1, 1].grid(True, alpha=0.3)
+        axes[1, 1].legend()
+        for step in fr_high_gradient_steps:
+            axes[1, 1].axvline(x=step, color='r', linestyle='--', alpha=0.5, linewidth=0.8)
+        
+        # Plot RL force norm and gradient
+        axes[2, 0].plot(time_steps, rl_force_array, 'r-', linewidth=1.5, label='RL XY Force Norm')
+        axes[2, 0].set_ylabel('Force Norm (N)', fontsize=12)
+        axes[2, 0].set_title('RL Foot XY Force Norm', fontsize=14)
+        axes[2, 0].grid(True, alpha=0.3)
+        axes[2, 0].legend()
+        for step in rl_high_gradient_steps:
+            axes[2, 0].axvline(x=step, color='r', linestyle='--', alpha=0.5, linewidth=0.8)
+        
+        axes[2, 1].plot(time_steps, rl_gradient, 'r-', linewidth=1.5, label='RL Gradient')
+        axes[2, 1].axhline(y=500, color='k', linestyle=':', alpha=0.5, label='Threshold (±500)')
+        axes[2, 1].axhline(y=-500, color='k', linestyle=':', alpha=0.5)
+        axes[2, 1].set_ylabel('Gradient (N/step)', fontsize=12)
+        axes[2, 1].set_title('RL Force Gradient', fontsize=14)
+        axes[2, 1].grid(True, alpha=0.3)
+        axes[2, 1].legend()
+        for step in rl_high_gradient_steps:
+            axes[2, 1].axvline(x=step, color='r', linestyle='--', alpha=0.5, linewidth=0.8)
+        
+        # Plot RR force norm and gradient
+        axes[3, 0].plot(time_steps, rr_force_array, 'm-', linewidth=1.5, label='RR XY Force Norm')
+        axes[3, 0].set_xlabel('Time Step', fontsize=12)
+        axes[3, 0].set_ylabel('Force Norm (N)', fontsize=12)
+        axes[3, 0].set_title('RR Foot XY Force Norm', fontsize=14)
+        axes[3, 0].grid(True, alpha=0.3)
+        axes[3, 0].legend()
+        for step in rr_high_gradient_steps:
+            axes[3, 0].axvline(x=step, color='r', linestyle='--', alpha=0.5, linewidth=0.8)
+        
+        axes[3, 1].plot(time_steps, rr_gradient, 'm-', linewidth=1.5, label='RR Gradient')
+        axes[3, 1].axhline(y=500, color='k', linestyle=':', alpha=0.5, label='Threshold (±500)')
+        axes[3, 1].axhline(y=-500, color='k', linestyle=':', alpha=0.5)
+        axes[3, 1].set_xlabel('Time Step', fontsize=12)
+        axes[3, 1].set_ylabel('Gradient (N/step)', fontsize=12)
+        axes[3, 1].set_title('RR Force Gradient', fontsize=14)
+        axes[3, 1].grid(True, alpha=0.3)
+        axes[3, 1].legend()
+        for step in rr_high_gradient_steps:
+            axes[3, 1].axvline(x=step, color='r', linestyle='--', alpha=0.5, linewidth=0.8)
+        
+        plt.tight_layout()
+        
+        save_path = os.path.join(log_dir, 'all_feet_force_xy.pdf')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Saved all feet xy force plot to: {save_path}")
+        print(f"FL: Found {len(fl_high_gradient_steps)} steps with |gradient| > 500")
+        if len(fl_high_gradient_steps) > 0:
+            print(f"  FL high gradient steps: {fl_high_gradient_steps.tolist()}")
+        print(f"FR: Found {len(fr_high_gradient_steps)} steps with |gradient| > 500")
+        if len(fr_high_gradient_steps) > 0:
+            print(f"  FR high gradient steps: {fr_high_gradient_steps.tolist()}")
+        print(f"RL: Found {len(rl_high_gradient_steps)} steps with |gradient| > 500")
+        if len(rl_high_gradient_steps) > 0:
+            print(f"  RL high gradient steps: {rl_high_gradient_steps.tolist()}")
+        print(f"RR: Found {len(rr_high_gradient_steps)} steps with |gradient| > 500")
+        if len(rr_high_gradient_steps) > 0:
+            print(f"  RR high gradient steps: {rr_high_gradient_steps.tolist()}")
+        plt.show()
 
     # Visualize wm_latent sensitivity as greyscale heatmap
     if use_world_model and VISUALIZE_LATENT_SENSITIVITY and latent_sensitivity_map:
@@ -779,5 +977,6 @@ if __name__ == '__main__':
     VISUALIZE_LATENT = args.visualize_latent
     VISUALIZE_SENSITIVITY = args.visualize_sensitivity
     VISUALIZE_LATENT_SENSITIVITY = args.visualize_latent_sensitivity
+    PLOT_FORCE_XY = args.plot_force_xy
 
     play(args)

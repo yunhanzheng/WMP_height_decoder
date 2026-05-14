@@ -180,6 +180,7 @@ def get_args():
         {"name": "--visualize-latent", "action": "store_true", "default": False, "help": "Visualize world model latent space as heatmap"},
         {"name": "--visualize-sensitivity", "action": "store_true", "default": False, "help": "Visualize saliency of FL-foot height w.r.t. proprioception history"},
         {"name": "--visualize-latent-sensitivity", "action": "store_true", "default": False, "help": "Visualize saliency of 32-dim wm_latent w.r.t. proprioception history (unrolled WM)"},
+        {"name": "--plot-force-xy", "action": "store_true", "default": False, "help": "Plot xy force norm for front feet with gradient analysis"},
 
     ]
     # parse arguments

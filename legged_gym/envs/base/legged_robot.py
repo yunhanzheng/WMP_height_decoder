@@ -294,6 +294,8 @@ class LeggedRobot(BaseTask):
         self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        # update binary contact state of the feet, just in xy direction, and with a threshold of 2.0N, to avoid small contact forces from noisy measurements
+        self.binary_feet_contact[:] = torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=-1) > 2.0
 
         # the original code call _post_physics_step_callback before compute reward, which seems unreasonable. e.g., the
         # current action follows the current commands, while _post_physics_step_callback may resample command, resulting a low reward.
@@ -321,7 +323,8 @@ class LeggedRobot(BaseTask):
         self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
-
+        # after reset, also update binary contact state of the feet
+        self.binary_feet_contact[:] = torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=-1) > 2.0
         # self._post_physics_step_callback()
 
         self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
@@ -461,7 +464,8 @@ class LeggedRobot(BaseTask):
                                     self.commands[:, :3] * self.commands_scale,
                                     (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
                                     self.dof_vel * self.obs_scales.dof_vel,
-                                    self.actions
+                                    self.actions,
+                                    self.binary_feet_contact.float()
                                     ),dim=-1)
 
         if self.num_privileged_obs is not None:
@@ -1059,6 +1063,8 @@ class LeggedRobot(BaseTask):
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        # binary contact state of the feet
+        self.binary_feet_contact = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.bool, device=self.device, requires_grad=False)
         if self.cfg.terrain.measure_heights:
             self.height_points = self._init_height_points()
             self.forward_height_points = self._init_forward_height_points()
