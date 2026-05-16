@@ -54,13 +54,13 @@ def play(args):
     # override some parameters for testing
     # env_cfg.env.num_envs = min(env_cfg.env.num_envs, 50)
     env_cfg.env.num_envs = 1
-    env_cfg.env.episode_length_s = 5 #20
+    env_cfg.env.episode_length_s = 20 #20
     env_cfg.terrain.num_rows = 10
     env_cfg.terrain.num_cols = 1
     env_cfg.terrain.terrain_length = 7.5
     env_cfg.terrain.terrain_width = 7.5
     env_cfg.terrain.curriculum = False
-    env_cfg.terrain.difficulty = 0.5 # use 0.1 for latent heatmap
+    env_cfg.terrain.difficulty = 0.3 # use 0.1 for latent heatmap
     env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
     env_cfg.init_state.pos = [0.0, 0.0, 0.38]
 
