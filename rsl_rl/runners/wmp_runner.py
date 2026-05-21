@@ -135,7 +135,7 @@ class WMPRunner:
                         reward_scales[f"reward_scales/{attr}"] = getattr(scales, attr)
 
             wandb.init(
-                project="WMP_TERRAIN_FULL",  # Replace with your project name
+                project="WMP_HEIGHT_DECODER",  # Replace with your project name
                 entity="gary-guillen-chavez-technical-university-of-munich",  # Your wandb username
                 name=os.path.basename(log_dir) if log_dir else self.cfg.get("experiment_name", "run"),
                 config={**train_cfg, **reward_scales},
@@ -181,7 +181,8 @@ class WMPRunner:
         image_shape = self.env.cfg.depth.resized + (1,)
         obs_shape = {'prop': (prop_dim,), 'image': image_shape,}
 
-        self._world_model = WorldModel(self.wm_config, obs_shape, use_camera=self.env.cfg.depth.use_camera)
+        self._world_model = WorldModel(self.wm_config, obs_shape, use_camera=self.env.cfg.depth.use_camera,
+                                       binary_height_dim=self.env.height_dim)
         self._world_model = self._world_model.to(self._world_model.device)
         print('Finish construct world model')
         self.wm_feature_dim = self.wm_config.dyn_deter #+ self.wm_config.dyn_stoch * self.wm_config.dyn_discrete
@@ -323,6 +324,9 @@ class WMPRunner:
                                 wm_base_vel[not_reset_env_ids, :].to('cpu')
                             self.wm_buffer["reward"][not_reset_env_ids, self.wm_buffer_index[not_reset_env_ids]] = \
                                 wm_reward[not_reset_env_ids].to('cpu')
+                            binary_height = (obs[:, -self.env.height_dim:] < 0.0).float()
+                            self.wm_buffer["binary_height"][not_reset_env_ids, self.wm_buffer_index[not_reset_env_ids], :] = \
+                                binary_height[not_reset_env_ids].to('cpu')
                             self.wm_buffer_index[not_reset_env_ids] += 1
 
                         wm_reward[:] = 0
@@ -376,8 +380,13 @@ class WMPRunner:
 
                 # Train World Model
                 wm_metrics = self.train_world_model()
+                wm_log = {}
                 for name, values in wm_metrics.items():
-                    self.writer.add_scalar('World_model/' + name, float(np.mean(values)), it)
+                    scalar = float(np.mean(values))
+                    self.writer.add_scalar('World_model/' + name, scalar, it)
+                    wm_log['World_model/' + name] = scalar
+                if self.use_wandb and wm_log:
+                    wandb.log(wm_log, step=it)
             print('training world model time:', time.time() - start_time)
 
             # copy the config file
@@ -397,6 +406,8 @@ class WMPRunner:
                                    self.env.num_base_vel * self.wm_update_interval), device=self._world_model.device),
             "reward": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,),
                                   device=self._world_model.device),
+            "binary_height": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,
+                                          self.env.height_dim), device=self._world_model.device),
         }
         if(self.env.cfg.depth.use_camera):
             self.wm_dataset["image"] = torch.zeros(((self.env.cfg.depth.camera_num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,)
@@ -416,6 +427,8 @@ class WMPRunner:
                                    self.env.num_base_vel * self.wm_update_interval), device='cpu'),
             "reward": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,),
                                   device='cpu'),
+            "binary_height": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,
+                                          self.env.height_dim), device='cpu'),
         }
         if(self.env.cfg.depth.use_camera):
             self.wm_buffer["image"] = torch.zeros(((self.env.cfg.depth.camera_num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,)

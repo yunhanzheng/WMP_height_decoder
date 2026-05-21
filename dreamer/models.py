@@ -32,7 +32,7 @@ from . import networks
 to_np = lambda x: x.detach().cpu().numpy()
 
 class WorldModel(nn.Module):
-    def __init__(self, config, obs_shape, use_camera):
+    def __init__(self, config, obs_shape, use_camera, binary_height_dim=None):
         super(WorldModel, self).__init__()
         # self._step = step
         self._use_amp = True if config.precision == 16 else False
@@ -91,6 +91,18 @@ class WorldModel(nn.Module):
         #     device=config.device,
         #     name="Cont",
         # )
+        if binary_height_dim is not None:
+            self.heads["binary_height_head"] = networks.MLP(
+                feat_size,
+                {"binary_height": (binary_height_dim,)},
+                3,
+                512,
+                config.act,
+                config.norm,
+                dist="binary",
+                device=config.device,
+                name="BinaryHeight",
+            )
         for name in config.grad_heads:
             assert name in self.heads, name
         self._model_opt = tools.Optimizer(
@@ -110,7 +122,8 @@ class WorldModel(nn.Module):
         # can set different scale for terms in decoder here
         self._scales = dict(
             reward=config.reward_head["loss_scale"],
-            image = 1.0,
+            image=1.0,
+            binary_height=0.1,
             # clean_prop = 0,
             # cont=config.cont_head["loss_scale"],
         )

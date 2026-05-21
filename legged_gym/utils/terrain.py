@@ -295,8 +295,8 @@ class Terrain:
         elif choice < self.proportions[8]:
             # Full lenght striped terrain
             num_rectangles = int(24 * difficulty)
-            min_h = 0.02 + difficulty * 0.08  # 2 cm at level 1 → 10 cm at level 10
-            max_h = 0.03 + difficulty * 0.12  # 3 cm at level 1 → 15 cm at level 10
+            min_h = min(0.08 + difficulty * 0.10, 0.13)  # ~10 cm at level 1, capped at 13 cm from level 5
+            max_h = min(0.10 + difficulty * 0.10, 0.15)  # ~10 cm at level 1, capped at 15 cm from level 5
             terrain_utils.full_lenght_obstacle_terrain(
                 terrain,
                 min_h,

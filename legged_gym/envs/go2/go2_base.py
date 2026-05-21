@@ -5,6 +5,8 @@ class GO2BaseCfg(LeggedRobotCfg):
 
     class terrain(LeggedRobotCfg.terrain):
         # domino terrain
+        # terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+        # full lenght terrain 
         terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
         border_size = 25
@@ -197,7 +199,7 @@ class GO2BaseCfg(LeggedRobotCfg):
         heading_command = True  # if true: compute ang vel command from heading error
 
         class ranges:
-            lin_vel_x = [-1.0, 1.0]  # min max [m/s]
-            lin_vel_y = [-1.0, 1.0]  # min max [m/s]
-            ang_vel_yaw = [-1.0, 1.0]  # min max [rad]
-            heading = [-3.14, 3.14]  # min max [rad/s]
+            lin_vel_x = [0.0, 1.0]  # min max [m/s]
+            lin_vel_y = [0.0, 0.0]  # min max [m/s]
+            ang_vel_yaw = [0.0, 0.0]  # min max [rad]
+            heading = [0.0, 0.0]  # min max [rad/s]

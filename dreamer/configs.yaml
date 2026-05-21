@@ -20,7 +20,7 @@ defaults:
   dyn_mean_act: 'none'
   dyn_std_act: 'sigmoid2'
   dyn_min_std: 0.1
-  grad_heads: ['decoder', 'reward']
+  grad_heads: ['decoder', 'reward', 'binary_height_head']
   units: 512 # = other heads except decoder, e.g., reward
   act: 'SiLU'
   norm: True

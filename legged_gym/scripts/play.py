@@ -60,8 +60,9 @@ def play(args):
     env_cfg.terrain.terrain_length = 7.5
     env_cfg.terrain.terrain_width = 7.5
     env_cfg.terrain.curriculum = False
-    env_cfg.terrain.difficulty = 0.3 # use 0.1 for latent heatmap
-    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    env_cfg.terrain.difficulty = 0.1 # use 0.1 for latent heatmap
+    #env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]
     env_cfg.init_state.pos = [0.0, 0.0, 0.38]
 
     # env_cfg.terrain.difficulty = 0.15  # use 0.15 for stripe obstacle
@@ -92,7 +93,7 @@ def play(args):
     env_cfg.domain_rand.stiffness_multiplier_range = [1.0, 1.0]
     env_cfg.domain_rand.damping_multiplier_range = [1.0, 1.0]
 
-    env_cfg.commands.ranges.lin_vel_x = [1.0, 1.0]
+    env_cfg.commands.ranges.lin_vel_x = [0.5, 0.5]
     env_cfg.commands.ranges.lin_vel_y = [0.0, 0.0]
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
     env_cfg.commands.ranges.heading = [0.0, 0.0]
