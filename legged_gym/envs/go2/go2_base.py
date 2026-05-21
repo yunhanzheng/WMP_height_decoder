@@ -8,6 +8,8 @@ class GO2BaseCfg(LeggedRobotCfg):
         # terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
         # full lenght terrain 
         terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        # flat terrain
+        # terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
         border_size = 25
         mesh_type = "trimesh"

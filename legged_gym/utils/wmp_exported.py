@@ -146,9 +146,10 @@ class WMPWorldModelStep(nn.Module):
         """Run one world-model obs step and return the deter feature."""
         wm_obs = {"prop": prop, "is_first": is_first}
         embed  = self.encoder(wm_obs)
-        prev_action = action_flat if self._latent is not None else None
+        prev_action   = action_flat if self._latent is not None else None
+        prev_base_vel = torch.zeros(prop.shape[0], self.dynamics._num_base_vel, device=prop.device)
         self._latent, _ = self.dynamics.obs_step(
-            self._latent, prev_action, embed, is_first, sample=True
+            self._latent, prev_action, prev_base_vel, embed, is_first, sample=True
         )
         return self.dynamics.get_deter_feat(self._latent)
 

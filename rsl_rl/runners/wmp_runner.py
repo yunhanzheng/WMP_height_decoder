@@ -175,8 +175,7 @@ class WMPRunner:
         if (self.wm_config.wm_device != 'None'):
             self.wm_config.device = self.wm_config.wm_device
         self.wm_config.num_actions = self.wm_config.num_actions * self.env.cfg.depth.update_interval
-        # Add base velocity to world model input
-        self.wm_config.num_base_vel = self.wm_config.num_base_vel * self.env.cfg.depth.update_interval
+        self.wm_config.num_base_vel = self.env.num_base_vel * self.env.cfg.depth.update_interval
         prop_dim = self.env.num_obs - self.env.privileged_dim - self.env.height_dim - self.env.num_actions
         image_shape = self.env.cfg.depth.resized + (1,)
         obs_shape = {'prop': (prop_dim,), 'image': image_shape,}
@@ -260,8 +259,7 @@ class WMPRunner:
                     history = self.trajectory_history.flatten(1).to(self.device)
                     actions = self.alg.act(obs, critic_obs, history, wm_feature.to(self.env.device))
                     obs, privileged_obs, rewards, dones, infos, reset_env_ids, _ = self.env.step(actions)
-                    # Add base velocity to world model input
-                    base_vel = obs[:, self.env.privileged_dim - 3: self.env.privileged_dim].to(self._world_model.device)
+                    base_vel = obs[:, self.env.privileged_dim - self.env.num_base_vel: self.env.privileged_dim].to(self._world_model.device)
 
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs, rewards, dones = obs.to(self.device), critic_obs.to(

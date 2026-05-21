@@ -303,6 +303,8 @@ class Terrain:
                 max_h,
                 num_rects=num_rectangles,
             )
+        elif choice < self.proportions[9]:
+            pass  # Flat terrain — SubTerrain height_field_raw is zeros by default
         else:
             pit_terrain(terrain, depth=pit_depth, platform_size=4.0)
 

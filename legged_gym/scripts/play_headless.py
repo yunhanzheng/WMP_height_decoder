@@ -216,8 +216,9 @@ def play_headless(args, video_args):
         if use_world_model:
             if env.global_counter % wm_update_interval == 0:
                 wm_embed = world_model.encoder(wm_obs)
+                wm_base_vel = torch.zeros(env.num_envs, world_model.dynamics._num_base_vel, device=env.device)
                 wm_latent, _ = world_model.dynamics.obs_step(
-                    wm_latent, wm_action, wm_embed, wm_obs["is_first"], sample=True)
+                    wm_latent, wm_action, wm_base_vel, wm_embed, wm_obs["is_first"], sample=True)
                 wm_feature = world_model.dynamics.get_deter_feat(wm_latent)
                 wm_is_first[:] = 0
 
