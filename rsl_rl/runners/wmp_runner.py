@@ -135,7 +135,7 @@ class WMPRunner:
                         reward_scales[f"reward_scales/{attr}"] = getattr(scales, attr)
 
             wandb.init(
-                project="WMP_hd",  # Replace with your project name
+                project="wmp_hd",  # Replace with your project name
                 entity="gary-guillen-chavez-technical-university-of-munich",  # Your wandb username
                 name=os.path.basename(log_dir) if log_dir else self.cfg.get("experiment_name", "run"),
                 config={**train_cfg, **reward_scales},

@@ -90,7 +90,7 @@ class OnPolicyRunner:
         # Wandb logging
         self.use_wandb = self.cfg.get("use_wandb", True)
         if self.use_wandb:
-            wandb.login(key="25cff70399f95d2d6de6e901cd2e39c1a7d9214b")
+            wandb.login(key="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")
 
             # Extract reward scales from env config if available
             reward_scales = {}
@@ -101,8 +101,8 @@ class OnPolicyRunner:
                         reward_scales[f"reward_scales/{attr}"] = getattr(scales, attr)
 
             wandb.init(
-                project="legged_gym_baseline",
-                entity="ge48dur-technical-university-of-munich",
+                project="baseline",
+                entity="gary-guillen-chavez-technical-university-of-munich",
                 name=self.cfg.get("experiment_name", "run"),
                 config={**train_cfg, **reward_scales},
             )
