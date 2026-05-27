@@ -1856,3 +1856,13 @@ class LeggedRobot(BaseTask):
             ).clip(min=0.0),
             dim=1,
         )
+
+    def _reward_hip_pos(self):
+        
+        # Calculate error: current_pos - default_pos
+        error = torch.abs(self.dof_pos[:, self.hip_indices] - self.default_dof_pos[:, self.hip_indices])
+        # Only penalize if error > 0.1 radians (the "safe zone")
+        margin = 0.04
+        penalty = torch.square(torch.clamp(error - margin, min=0.0))
+        
+        return torch.sum(penalty, dim=1)
