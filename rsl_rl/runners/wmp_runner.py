@@ -124,7 +124,7 @@ class WMPRunner:
         # Wandb logging
         self.use_wandb = self.cfg.get("use_wandb", True)
         if self.use_wandb:
-            wandb.login(key="9a8eac2e29b1a3f9de782fd285b2fb0c4dbe3952")
+            wandb.login(key="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")
 
             # Extract reward scales from env config if available
             reward_scales = {}
@@ -135,8 +135,8 @@ class WMPRunner:
                         reward_scales[f"reward_scales/{attr}"] = getattr(scales, attr)
 
             wandb.init(
-                project="WMP",  # Replace with your project name
-                entity="xiaoyulong97-tum",  # Your wandb username
+                project="WMP_hd",  # Replace with your project name
+                entity="gary-guillen-chavez-technical-university-of-munich",  # Your wandb username
                 name=os.path.basename(log_dir) if log_dir else self.cfg.get("experiment_name", "run"),
                 config={**train_cfg, **reward_scales},
             )
@@ -311,6 +311,11 @@ class WMPRunner:
                                 wm_action[not_reset_env_ids, :].to('cpu')
                             self.wm_buffer["reward"][not_reset_env_ids, self.wm_buffer_index[not_reset_env_ids]] = \
                                 wm_reward[not_reset_env_ids].to('cpu')
+                            # buffer for heightmap
+                            binary_heightmap = (obs[:, -self.env.height_dim:] < 0.0).float()
+                            self.wm_buffer["binary_heightmap"][not_reset_env_ids, self.wm_buffer_index[not_reset_env_ids], :] = \
+                                binary_heightmap[not_reset_env_ids].to('cpu')
+                            
                             self.wm_buffer_index[not_reset_env_ids] += 1
 
                         wm_reward[:] = 0
@@ -364,8 +369,13 @@ class WMPRunner:
 
                 # Train World Model
                 wm_metrics = self.train_world_model()
+                wm_log = {}
                 for name, values in wm_metrics.items():
-                    self.writer.add_scalar('World_model/' + name, float(np.mean(values)), it)
+                    scalar = float(np.mean(values))
+                    self.writer.add_scalar('World_model/' + name, scalar, it)
+                    wm_log['World_model/' + name] = scalar
+                if self.use_wandb and wm_log:
+                    wandb.log(wm_log, step=it)
             print('training world model time:', time.time() - start_time)
 
             # copy the config file
@@ -383,6 +393,8 @@ class WMPRunner:
                                    self.env.num_actions * self.wm_update_interval), device=self._world_model.device),
             "reward": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,),
                                   device=self._world_model.device),
+            "binary_heightmap": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,
+                                          self.env.height_dim), device=self._world_model.device),
         }
         if(self.env.cfg.depth.use_camera):
             self.wm_dataset["image"] = torch.zeros(((self.env.cfg.depth.camera_num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,)
@@ -400,6 +412,8 @@ class WMPRunner:
                                    self.env.num_actions * self.wm_update_interval), device='cpu'),
             "reward": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,),
                                   device='cpu'),
+            "binary_heightmap": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,
+                                        self.env.height_dim), device='cpu'),
         }
         if(self.env.cfg.depth.use_camera):
             self.wm_buffer["image"] = torch.zeros(((self.env.cfg.depth.camera_num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,)

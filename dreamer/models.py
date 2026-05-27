@@ -90,6 +90,23 @@ class WorldModel(nn.Module):
         #     device=config.device,
         #     name="Cont",
         # )
+
+        # add binary heightmap head if specified in config
+        if config.use_binary_heightmap:
+            self.heads["binary_heightmap"] = networks.MLP(
+                feat_size,
+                (config.height_dim,),
+                config.binary_heightmap["layers"],
+                config.binary_heightmap["mlp_units"],
+                config.binary_heightmap["act"],
+                config.binary_heightmap["norm"],
+                dist=config.binary_heightmap["dist"],
+                device=config.device,
+                name="BinaryHeightmap",
+            )
+        else:
+            config.grad_heads = [h for h in config.grad_heads if h != "binary_heightmap"]
+
         for name in config.grad_heads:
             assert name in self.heads, name
         self._model_opt = tools.Optimizer(
@@ -110,6 +127,7 @@ class WorldModel(nn.Module):
         self._scales = dict(
             reward=config.reward_head["loss_scale"],
             image = 1.0,
+            binary_heightmap = config.binary_heightmap["scale"],
             # clean_prop = 0,
             # cont=config.cont_head["loss_scale"],
         )
