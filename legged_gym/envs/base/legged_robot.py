@@ -136,6 +136,8 @@ class LeggedRobot(BaseTask):
         if self.cfg.env.reference_state_initialization:
             self.amp_loader = AMPLoader(motion_files=self.cfg.env.amp_motion_files, device=self.device, time_between_frames=self.dt)
 
+        # add hip indices
+        self.hip_indices = torch.tensor([0, 3, 6, 9], device=self.device, dtype=torch.long)
     def reset(self):
         """ Reset all robots"""
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
