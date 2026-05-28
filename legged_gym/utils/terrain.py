@@ -288,7 +288,7 @@ class Terrain:
             terrain_utils.discrete_one_obstacle_terrain(
                 terrain,
                 height=obstacle_height,
-                width=0.2,
+                width=0.1,
                 platform_size=1.0
             )
         elif choice < self.proportions[8]:

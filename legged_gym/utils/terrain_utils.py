@@ -215,7 +215,7 @@ def discrete_obstacles_terrain(
 #     terrain.height_field_raw[x1:x2, y1:y2] = 0
 #     return terrain
 
-def discrete_stripes_obstacle_terrain(terrain, height, filled_rate, width=0.2, platform_size=3.0):
+def discrete_stripes_obstacle_terrain(terrain, height, filled_rate, width=0.1, platform_size=3.0):
     """
     Generate a terrain with stripes obstacle
 
@@ -316,8 +316,8 @@ def discrete_obstacles_terrain_cells(
     for _ in range(num_rects):
         # width = np.random.choice(range(min_size, max_size + 1))
         length = np.random.choice(range(min_size, max_size + 1))
-        start_i = np.random.choice(range(0, i - width, 4))
-        start_j = np.random.choice(range(0, j - length, 4))
+        start_i = np.random.choice(range(0, i - width, 8))
+        start_j = np.random.choice(range(0, j - length, 8))
         height = min_height + np.random.rand() * (max_height - min_height)
         terrain.height_field_raw[start_i : start_i + width, start_j : start_j + length] = (
             height / terrain.vertical_scale

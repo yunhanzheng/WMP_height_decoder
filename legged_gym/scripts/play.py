@@ -45,7 +45,7 @@ from legged_gym.envs import *
 from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger, export_wmp
 
 import numpy as np
-import torch
+import torch    
 import matplotlib.pyplot as plt
 
 
@@ -54,18 +54,21 @@ def play(args):
     # override some parameters for testing
     # env_cfg.env.num_envs = min(env_cfg.env.num_envs, 50)
     env_cfg.env.num_envs = 1
-    env_cfg.env.episode_length_s = 5 #20
-    env_cfg.terrain.num_rows = 1
+    env_cfg.env.episode_length_s = 20 #20
+    env_cfg.terrain.num_rows = 10
     env_cfg.terrain.num_cols = 1
-    env_cfg.terrain.terrain_length = 2
-    env_cfg.terrain.terrain_width = 2
+    env_cfg.terrain.terrain_length = 7.5
+    env_cfg.terrain.terrain_width = 7.5
     env_cfg.terrain.curriculum = False
     env_cfg.terrain.difficulty = 0.1 # use 0.1 for latent heatmap
-    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    
+    #env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    env_cfg.init_state.pos = [0.0, 0.0, 0.38]
 
-    # env_cfg.terrain.difficulty = 1.0  # use 0.15 for stripe obstacle
+    # env_cfg.terrain.difficulty = 0.15  # use 0.15 for stripe obstacle
     # env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
-
+    
     env_cfg.noise.add_noise = False
 
     # Keep domain randomizations ENABLED but with fixed values to match training observation structure
