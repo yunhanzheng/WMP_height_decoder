@@ -1,14 +1,18 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
+training_stage = 1  # 1 = domino terrain + full cmd_vel; 2 = stripe terrain + forward-only cmd_vel
+
 class GO2BaseCfg(LeggedRobotCfg):
     """Base configuration for GO2 robot variants, containing shared settings"""
 
     class terrain(LeggedRobotCfg.terrain):
-        # domino terrain
-        terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 
-        # full lenght stripe terrain
-        # terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        if training_stage == 1:
+            # domino terrain
+            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+        elif training_stage == 2:
+            # full length stripe terrain
+            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
         border_size = 25
         mesh_type = "trimesh"
@@ -200,7 +204,15 @@ class GO2BaseCfg(LeggedRobotCfg):
         heading_command = True  # if true: compute ang vel command from heading error
 
         class ranges:
-            lin_vel_x = [-1.0, 1.0]  # min max [m/s]
-            lin_vel_y = [-1.0, 1.0]  # min max [m/s]
-            ang_vel_yaw = [-3.14, 3.14]  # min max [rad]
-            heading = [-3.14, 3.14]  # min max [rad/s]
+            if training_stage == 1:
+                # full cmd_vel
+                 lin_vel_x = [-1.0, 1.0]  # min max [m/s]
+                 lin_vel_y = [-1.0, 1.0]  # min max [m/s]
+                 ang_vel_yaw = [-3.14, 3.14]  # min max [rad]
+                 heading = [-3.14, 3.14]  # min max [rad/s]
+            elif training_stage == 2:
+                # forward-only cmd_vel
+                lin_vel_x = [0.0, 1.0]  # min max [m/s]
+                lin_vel_y = [0.0, 0.0]  # min max [m/s]
+                ang_vel_yaw = [0.0, 0.0]  # min max [rad]
+                heading = [0.0, 0.0]  # min max [rad/s]
