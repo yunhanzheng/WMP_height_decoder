@@ -385,7 +385,9 @@ class LeggedRobot(BaseTask):
             self._reset_root_states(env_ids)
 
         self._resample_commands(env_ids)
-
+        if getattr(self.cfg.commands, 'use_stop_and_go', False):
+            self.cmd_phase_moving[env_ids] = True
+            self._reset_cmd_phase_timer(env_ids, moving=True)
 
         if self.cfg.domain_rand.randomize_gains:
             new_randomized_gains = self.compute_randomized_gains(len(env_ids))
@@ -658,8 +660,24 @@ class LeggedRobot(BaseTask):
             Default behaviour: Compute ang vel command based on target and heading, compute measured terrain heights and randomly push robots
         """
         #
-        env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt)==0).nonzero(as_tuple=False).flatten()
-        self._resample_commands(env_ids)
+        if getattr(self.cfg.commands, 'use_stop_and_go', False):
+            self.cmd_phase_timer -= self.dt
+            expired = (self.cmd_phase_timer <= 0).nonzero(as_tuple=False).flatten()
+            if len(expired):
+                was_moving = self.cmd_phase_moving[expired]
+                stopping = expired[was_moving]
+                if len(stopping):
+                    self.commands[stopping, :] = 0.
+                    self.cmd_phase_moving[stopping] = False
+                    self._reset_cmd_phase_timer(stopping, moving=False)
+                starting = expired[~was_moving]
+                if len(starting):
+                    self._resample_commands(starting)
+                    self.cmd_phase_moving[starting] = True
+                    self._reset_cmd_phase_timer(starting, moving=True)
+        else:
+            env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt)==0).nonzero(as_tuple=False).flatten()
+            self._resample_commands(env_ids)
         if self.cfg.commands.heading_command:
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = torch.atan2(forward[:self.roughflat_start_idx, 1], forward[:self.roughflat_start_idx, 0])
@@ -691,6 +709,12 @@ class LeggedRobot(BaseTask):
         self.commands[self.tilt_start_idx:self.tilt_end_idx, 3] = 0
         self.commands[self.pit_start_idx:self.pit_end_idx, 3] = 0
         # self.commands[self.gap_start_idx:self.gap_end_idx, 3] = 0
+
+    def _reset_cmd_phase_timer(self, env_ids, moving):
+        lo, hi = (self.cfg.commands.moving_time_range if moving
+                  else self.cfg.commands.stop_time_range)
+        self.cmd_phase_timer[env_ids] = torch_rand_float(lo, hi, (len(env_ids), 1),
+                                                         device=self.device).squeeze(1)
 
     def _compute_torques(self, actions):
         """ Compute torques from actions.
@@ -1047,6 +1071,10 @@ class LeggedRobot(BaseTask):
         self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13])
         self.commands = torch.zeros(self.num_envs, self.cfg.commands.num_commands, dtype=torch.float, device=self.device, requires_grad=False) # x vel, y vel, yaw vel, heading
         self.commands_scale = torch.tensor([self.obs_scales.lin_vel, self.obs_scales.lin_vel, self.obs_scales.ang_vel], device=self.device, requires_grad=False,) # TODO change this
+        if getattr(self.cfg.commands, 'use_stop_and_go', False):
+            self.cmd_phase_moving = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
+            self.cmd_phase_timer  = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+            self._reset_cmd_phase_timer(torch.arange(self.num_envs, device=self.device), moving=True)
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.first_contact = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)

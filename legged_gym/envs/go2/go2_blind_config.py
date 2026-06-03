@@ -42,6 +42,9 @@ class GO2BlindCfg(GO2BaseCfg):
 
         scale = 1
         invert = True
+    
+    class commands(GO2BaseCfg.commands):
+        use_stop_and_go = False
 
 class GO2BlindCfgPPO( LeggedRobotCfgPPO ):
     runner_class_name = 'WMPRunner'

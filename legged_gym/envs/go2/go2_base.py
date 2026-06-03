@@ -1,6 +1,6 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-training_stage = 1  # 1 = domino terrain + full cmd_vel; 2 = stripe terrain + forward-only cmd_vel
+training_stage = 1  # 1 = domino terrain + full cmd_vel; 2 = full lenght stripe terrain + forward-only cmd_vel
 
 class GO2BaseCfg(LeggedRobotCfg):
     """Base configuration for GO2 robot variants, containing shared settings"""
@@ -202,6 +202,10 @@ class GO2BaseCfg(LeggedRobotCfg):
         num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10.  # time before command are changed[s]
         heading_command = True  # if true: compute ang vel command from heading error
+
+        use_stop_and_go = False
+        moving_time_range = [3.0, 6.0]   # seconds robot moves
+        stop_time_range   = [2.0, 4.0]   # seconds robot stays stopped
 
         class ranges:
             if training_stage == 1:
