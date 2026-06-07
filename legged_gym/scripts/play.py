@@ -546,6 +546,23 @@ def play(args):
             proprio = extract_proprio(obs)
             short_history, long_history = update_history(proprio, dones, short_history, long_history)
 
+        if i % 1 == 0:
+            base_height = env.root_states[robot_index, 2].item()
+            foot_xy = env.rigid_body_pos[robot_index, env.feet_indices, :2] + env.terrain.cfg.border_size
+            foot_px = torch.clip((foot_xy[:, 0] / env.terrain.cfg.horizontal_scale).long(), 0, env.height_samples.shape[0] - 2)
+            foot_py = torch.clip((foot_xy[:, 1] / env.terrain.cfg.horizontal_scale).long(), 0, env.height_samples.shape[1] - 2)
+            h1 = env.height_samples[foot_px, foot_py]
+            h2 = env.height_samples[foot_px + 1, foot_py]
+            h3 = env.height_samples[foot_px, foot_py + 1]
+            h4 = env.height_samples[foot_px + 1, foot_py + 1]
+            terrain_h = torch.max(torch.max(h1, h2), torch.max(h3, h4)).float() * env.terrain.cfg.vertical_scale
+            foot_z = env.rigid_body_pos[robot_index, env.feet_indices, 2]
+            clearance = foot_z - terrain_h
+            print(f"[step {i:4d}] base_h={base_height:.3f} | ", end="")
+            for k, name in enumerate(['FL', 'FR', 'RL', 'RR']):
+                print(f"{name}: fz={foot_z[k]:.3f} th={terrain_h[k]:.3f} clr={clearance[k]:.3f} | ", end="")
+            print()
+
         if RECORD_FRAMES:
             if i % 2:
                 filename = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames', f"{img_idx}.png")
