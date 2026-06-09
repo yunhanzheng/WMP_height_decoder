@@ -25,7 +25,7 @@ defaults:
   norm: True
 
   # use binary heightmap decoder
-  use_binary_heightmap: True
+  use_binary_heightmap: False
   height_dim: 187
 
   encoder:
