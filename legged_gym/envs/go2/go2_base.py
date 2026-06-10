@@ -148,7 +148,7 @@ class GO2BaseCfg(LeggedRobotCfg):
 
         clip_observations = 100.
         clip_actions = 100.0
-        base_height = 0.33  # base height of A1, used to normalize measured height
+        base_height = 0.35  # base height of A1, used to normalize measured height
 
     class rewards(LeggedRobotCfg.rewards):
         reward_curriculum = False
@@ -177,7 +177,7 @@ class GO2BaseCfg(LeggedRobotCfg):
         soft_dof_pos_limit = 5.0  # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.0
         soft_torque_limit = 1.0
-        base_height_target = 0.33
+        base_height_target = 0.35
         max_contact_force = 100.0  # forces above this value are penalized
 
     class noise:

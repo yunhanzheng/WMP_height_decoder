@@ -1738,7 +1738,7 @@ class LeggedRobot(BaseTask):
 
     def _reward_base_height(self):
         # Penalize base height away from target
-        base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
+        base_height = self.root_states[:, 2]
         return torch.square(base_height - self.cfg.rewards.base_height_target)
 
     def _reward_torques(self):
@@ -1865,10 +1865,10 @@ class LeggedRobot(BaseTask):
         contact = torch.logical_or(contact, self.contact_forces[:, self.feet_indices, 0] > 1.0)
 
         self.last_contacts = contact
-        xy_forces[feet_heights < 0.05] = 0
-        z_forces[feet_heights < 0.05] = 0
+        xy_forces[feet_heights < 0.12] = 0
+        z_forces[feet_heights < 0.12] = 0
         z_ans = z_forces.view(-1, 4).sum(dim=1)
-        z_ans[z_ans > 1] = 1
+        z_ans[z_ans > 2] = 1
 
         return z_ans
 
