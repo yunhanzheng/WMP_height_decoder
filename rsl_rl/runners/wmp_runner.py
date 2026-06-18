@@ -135,7 +135,7 @@ class WMPRunner:
                         reward_scales[f"reward_scales/{attr}"] = getattr(scales, attr)
 
             wandb.init(
-                project="wmp_hd",  # Replace with your project name
+                project="wmp_fs_hd",  # Replace with your project name
                 entity="gary-guillen-chavez-technical-university-of-munich",  # Your wandb username
                 name=os.path.basename(log_dir) if log_dir else self.cfg.get("experiment_name", "run"),
                 config={**train_cfg, **reward_scales},
@@ -311,11 +311,12 @@ class WMPRunner:
                                 wm_action[not_reset_env_ids, :].to('cpu')
                             self.wm_buffer["reward"][not_reset_env_ids, self.wm_buffer_index[not_reset_env_ids]] = \
                                 wm_reward[not_reset_env_ids].to('cpu')
-                            # buffer for heightmap
-                            binary_heightmap = (obs[:, -self.env.height_dim:] < 0.0).float()
-                            self.wm_buffer["binary_heightmap"][not_reset_env_ids, self.wm_buffer_index[not_reset_env_ids], :] = \
-                                binary_heightmap[not_reset_env_ids].to('cpu')
-                            
+                            # buffer for footprint binary map
+                            footprint_heights = self.env.get_footprint_map()
+                            binary_footprint = (footprint_heights > 0.0).float()
+                            self.wm_buffer["binary_footprint"][not_reset_env_ids, self.wm_buffer_index[not_reset_env_ids], :] = \
+                                binary_footprint[not_reset_env_ids].to('cpu')
+
                             self.wm_buffer_index[not_reset_env_ids] += 1
 
                         wm_reward[:] = 0
@@ -386,15 +387,16 @@ class WMPRunner:
         self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)))
 
     def init_wm_dataset(self):
+        T = int(self.env.max_episode_length / self.wm_update_interval) + 3
         self.wm_dataset = {
-            "prop": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3, self.env.cfg.env.prop_dim),
+            "prop": torch.zeros((self.env.num_envs, T, self.env.cfg.env.prop_dim),
                                 device=self._world_model.device),
-            "action": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,
+            "action": torch.zeros((self.env.num_envs, T,
                                    self.env.num_actions * self.wm_update_interval), device=self._world_model.device),
-            "reward": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,),
+            "reward": torch.zeros((self.env.num_envs, T,),
                                   device=self._world_model.device),
-            "binary_heightmap": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,
-                                          self.env.height_dim), device=self._world_model.device),
+            "binary_footprint": torch.zeros((self.env.num_envs, T, self.env.footprint_dim),
+                                            device=self._world_model.device),
         }
         if(self.env.cfg.depth.use_camera):
             self.wm_dataset["image"] = torch.zeros(((self.env.cfg.depth.camera_num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,)
@@ -406,14 +408,11 @@ class WMPRunner:
         self.wm_dataset_size = np.zeros(self.env.num_envs)
 
         self.wm_buffer = {
-            "prop": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3, self.env.cfg.env.prop_dim),
-                                device='cpu'),
-            "action": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,
+            "prop": torch.zeros((self.env.num_envs, T, self.env.cfg.env.prop_dim), device='cpu'),
+            "action": torch.zeros((self.env.num_envs, T,
                                    self.env.num_actions * self.wm_update_interval), device='cpu'),
-            "reward": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,),
-                                  device='cpu'),
-            "binary_heightmap": torch.zeros((self.env.num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,
-                                        self.env.height_dim), device='cpu'),
+            "reward": torch.zeros((self.env.num_envs, T,), device='cpu'),
+            "binary_footprint": torch.zeros((self.env.num_envs, T, self.env.footprint_dim), device='cpu'),
         }
         if(self.env.cfg.depth.use_camera):
             self.wm_buffer["image"] = torch.zeros(((self.env.cfg.depth.camera_num_envs, int(self.env.max_episode_length / self.wm_update_interval) + 3,)

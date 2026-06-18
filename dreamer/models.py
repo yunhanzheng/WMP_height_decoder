@@ -91,21 +91,21 @@ class WorldModel(nn.Module):
         #     name="Cont",
         # )
 
-        # add binary heightmap head if specified in config
-        if config.use_binary_heightmap:
-            self.heads["binary_heightmap"] = networks.MLP(
+        # add footprint binary decoder if specified in config
+        if config.use_footprint_decoder:
+            self.heads["binary_footprint"] = networks.MLP(
                 feat_size,
-                (config.height_dim,),
-                config.binary_heightmap["layers"],
-                config.binary_heightmap["mlp_units"],
-                config.binary_heightmap["act"],
-                config.binary_heightmap["norm"],
-                dist=config.binary_heightmap["dist"],
+                (config.footprint_dim,),
+                config.footprint_decoder["layers"],
+                config.footprint_decoder["mlp_units"],
+                config.footprint_decoder["act"],
+                config.footprint_decoder["norm"],
+                dist=config.footprint_decoder["dist"],
                 device=config.device,
-                name="BinaryHeightmap",
+                name="BinaryFootprint",
             )
         else:
-            config.grad_heads = [h for h in config.grad_heads if h != "binary_heightmap"]
+            config.grad_heads = [h for h in config.grad_heads if h != "binary_footprint"]
 
         for name in config.grad_heads:
             assert name in self.heads, name
@@ -127,7 +127,7 @@ class WorldModel(nn.Module):
         self._scales = dict(
             reward=config.reward_head["loss_scale"],
             image = 1.0,
-            binary_heightmap = config.binary_heightmap["scale"],
+            binary_footprint = config.footprint_decoder["scale"],
             # clean_prop = 0,
             # cont=config.cont_head["loss_scale"],
         )

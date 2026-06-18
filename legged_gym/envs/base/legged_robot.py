@@ -686,6 +686,8 @@ class LeggedRobot(BaseTask):
         if self.cfg.terrain.measure_heights:
             self.measured_heights = self._get_heights()
             self.measured_forward_heights = self._get_forward_heights()
+            if hasattr(self, 'footprint_height_points'):
+                self.measured_footprint_heights = self._get_footprint_heights()
         if self.cfg.domain_rand.push_robots and  (self.common_step_counter % self.cfg.domain_rand.push_interval == 0):
             self._push_robots()
 
@@ -1088,8 +1090,11 @@ class LeggedRobot(BaseTask):
         if self.cfg.terrain.measure_heights:
             self.height_points = self._init_height_points()
             self.forward_height_points = self._init_forward_height_points()
+            if hasattr(self.cfg.terrain, 'footprint_points_x') and self.footprint_dim > 0:
+                self.footprint_height_points = self._init_footprint_height_points()
         self.measured_heights = 0
         self.measured_forward_heights = 0
+        self.measured_footprint_heights = 0
 
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
@@ -1707,6 +1712,60 @@ class LeggedRobot(BaseTask):
     def get_forward_map(self):
         return torch.clip(self.root_states[:, 2].unsqueeze(1) - self.cfg.normalization.base_height - self.measured_forward_heights, -1,
                              1.) * self.obs_scales.height_measurements
+
+    def _init_footprint_height_points(self):
+        """Returns points at which the footprint height measurements are sampled (in base frame).
+        Covers [-0.35, 0.35] m in x and [-0.2, 0.2] m in y, discretized at 0.05 m.
+
+        Returns:
+            [torch.Tensor]: Tensor of shape (num_envs, num_footprint_points, 3)
+        """
+        y = torch.tensor(self.cfg.terrain.footprint_points_y, device=self.device, requires_grad=False)
+        x = torch.tensor(self.cfg.terrain.footprint_points_x, device=self.device, requires_grad=False)
+        grid_x, grid_y = torch.meshgrid(x, y)
+
+        self.num_footprint_height_points = grid_x.numel()
+        points = torch.zeros(self.num_envs, self.num_footprint_height_points, 3, device=self.device, requires_grad=False)
+        points[:, :, 0] = grid_x.flatten()
+        points[:, :, 1] = grid_y.flatten()
+        return points
+
+    def _get_footprint_heights(self, env_ids=None):
+        """Samples terrain heights at footprint points around each robot.
+        Returns raw terrain heights in meters (not normalized).
+        """
+        if self.cfg.terrain.mesh_type == 'plane':
+            return torch.zeros(self.num_envs, self.num_footprint_height_points, device=self.device, requires_grad=False)
+        elif self.cfg.terrain.mesh_type == 'none':
+            raise NameError("Can't measure height with terrain mesh type 'none'")
+
+        if env_ids:
+            points = quat_apply_yaw(self.base_quat[env_ids].repeat(1, self.num_footprint_height_points),
+                                    self.footprint_height_points[env_ids]) + (self.root_states[env_ids, :3]).unsqueeze(1)
+        else:
+            points = quat_apply_yaw(self.base_quat.repeat(1, self.num_footprint_height_points),
+                                    self.footprint_height_points) + (self.root_states[:, :3]).unsqueeze(1)
+
+        points += self.terrain.cfg.border_size
+        points = (points / self.terrain.cfg.horizontal_scale).long()
+        px = points[:, :, 0].view(-1)
+        py = points[:, :, 1].view(-1)
+        px = torch.clip(px, 0, self.height_samples.shape[0] - 2)
+        py = torch.clip(py, 0, self.height_samples.shape[1] - 2)
+
+        heights1 = self.height_samples[px, py]
+        heights2 = self.height_samples[px + 1, py]
+        heights3 = self.height_samples[px, py + 1]
+        heights = torch.min(heights1, heights2)
+        heights = torch.min(heights, heights3)
+
+        return heights.view(self.num_envs, -1) * self.terrain.cfg.vertical_scale
+
+    def get_footprint_map(self):
+        """Returns raw terrain heights (in meters) at footprint points.
+        Used by the runner to compute binary footprint: height > 0 → 1, else 0.
+        """
+        return self.measured_footprint_heights
 
     # ------------ reward functions----------------
     def _reward_smoothness(self):

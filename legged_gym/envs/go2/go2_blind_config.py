@@ -12,6 +12,7 @@ class GO2BlindCfg(GO2BaseCfg):
         action_dim = 12
         privileged_dim = 24 + 26 + 3  # privileged_obs[:,:privileged_dim] is the privileged information in privileged_obs, include 3-dim base linear vel
         height_dim = 187  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs
+        footprint_dim = 15 * 9  # 135 footprint points for binary height decoder (independent of measured_points)
         num_observations = prop_dim + privileged_dim + height_dim + action_dim
         num_privileged_obs = prop_dim + privileged_dim + height_dim + action_dim
         forward_height_dim = 0 # for depth image prediction

@@ -19,14 +19,14 @@ defaults:
   dyn_mean_act: 'none'
   dyn_std_act: 'sigmoid2'
   dyn_min_std: 0.1
-  grad_heads: ['decoder', 'reward', 'binary_heightmap']
+  grad_heads: ['decoder', 'reward', 'binary_footprint']
   units: 512 # = other heads except decoder, e.g., reward
   act: 'SiLU'
   norm: True
 
-  # use binary heightmap decoder
-  use_binary_heightmap: False
-  height_dim: 187
+  # use footprint binary decoder (predicts obstacle presence in robot footprint area)
+  use_footprint_decoder: True
+  footprint_dim: 135
 
   encoder:
     {mlp_keys: '.*', cnn_keys: 'image', act: 'SiLU', norm: True, cnn_depth: 32, kernel_size: 4, minres: 4, mlp_layers: 5, mlp_units: 1024, symlog_inputs: True}
@@ -41,8 +41,8 @@ defaults:
   cont_head:
     {layers: 2, loss_scale: 1.0, outscale: 1.0}
 
-  # architecture of binary heightmap decoder  
-  binary_heightmap:
+  # architecture of footprint binary decoder
+  footprint_decoder:
     {layers: 3, dist: 'binary', act: 'SiLU', norm: True, mlp_units: 512, scale: 0.1}
 
   dyn_scale: 0.5
@@ -63,4 +63,3 @@ defaults:
   opt_eps: 1e-8
   grad_clip: 1000
   opt: 'adam'
-

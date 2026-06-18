@@ -1,6 +1,6 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-training_stage = 1  # 1 = domino terrain + full cmd_vel; 2 = full lenght stripe terrain + forward-only cmd_vel
+training_stage = 2  # 1 = domino terrain + full cmd_vel; 2 = full lenght stripe terrain + forward-only cmd_vel
 
 class GO2BaseCfg(LeggedRobotCfg):
     """Base configuration for GO2 robot variants, containing shared settings"""
@@ -49,6 +49,11 @@ class GO2BaseCfg(LeggedRobotCfg):
                                      2.0]  # 1mx1.6m rectangle (without center line)
         measured_forward_points_y = [-1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.,
                                      0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2]
+        # footprint area for binary height decoder (independent of measured_points)
+        # x: [-0.35, 0.35] @ 0.05m → 15 points; y: [-0.2, 0.2] @ 0.05m → 9 points; total 135
+        footprint_points_x = [-0.35, -0.30, -0.25, -0.20, -0.15, -0.10, -0.05, 0.00,
+                               0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35]
+        footprint_points_y = [-0.20, -0.15, -0.10, -0.05, 0.00, 0.05, 0.10, 0.15, 0.20]
 
     class init_state(LeggedRobotCfg.init_state):
         pos = [0.0, 0.0, 0.38]  # x,y,z [m]
