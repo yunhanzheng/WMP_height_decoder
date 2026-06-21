@@ -292,16 +292,17 @@ class Terrain:
                 platform_size=1.0
             )
         elif choice < self.proportions[8]:
-            # Full length striped terrain — stripes guaranteed ≥1 m apart at any difficulty
-            num_rectangles = int(24 * difficulty)
-            min_h = min(0.08 + difficulty * 0.10, 0.13)  # ~10 cm at level 1, capped at 13 cm from level 5
-            max_h = min(0.10 + difficulty * 0.10, 0.15)  # ~10 cm at level 1, capped at 15 cm from level 5
+            # Full length striped terrain — difficulty controls height only; count and spacing are randomized
+            num_rectangles = np.random.randint(3, 6)        # 3–5 stripes regardless of difficulty
+            min_h = 0.05 + difficulty * 0.08               # 5 cm at difficulty 0, 13 cm at difficulty 1
+            max_h = 0.07 + difficulty * 0.08               # 7 cm at difficulty 0, 15 cm at difficulty 1
             terrain_utils.full_lenght_obstacle_terrain(
                 terrain,
                 min_h,
                 max_h,
                 num_rects=num_rectangles,
-                min_gap=1.0,
+                min_gap=1.1,
+                max_gap=2.5,
             )
         else:
             pit_terrain(terrain, depth=pit_depth, platform_size=4.0)

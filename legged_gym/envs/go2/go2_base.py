@@ -50,9 +50,9 @@ class GO2BaseCfg(LeggedRobotCfg):
         measured_forward_points_y = [-1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.,
                                      0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2]
         # footprint area for binary height decoder (independent of measured_points)
-        # x: [-0.35, 0.35] @ 0.05m → 15 points; y: [-0.2, 0.2] @ 0.05m → 9 points; total 135
-        footprint_points_x = [-0.35, -0.30, -0.25, -0.20, -0.15, -0.10, -0.05, 0.00,
-                               0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35]
+        # x: [-0.55, 0.55] @ 0.05m → 23 points; y: [-0.2, 0.2] @ 0.05m → 9 points; total 207
+        footprint_points_x = [-0.55, -0.50, -0.45, -0.40, -0.35, -0.30, -0.25, -0.20, -0.15, -0.10, -0.05, 0.00,
+                               0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55]
         footprint_points_y = [-0.20, -0.15, -0.10, -0.05, 0.00, 0.05, 0.10, 0.15, 0.20]
 
     class init_state(LeggedRobotCfg.init_state):
@@ -171,7 +171,7 @@ class GO2BaseCfg(LeggedRobotCfg):
             smoothness = -0.01
             feet_air_time = 0.01
             collision = -1
-            feet_stumble = -0.1
+            feet_stumble = -0.3
             stand_still = -0.01     # Penalize motion at zero commands
             hip_pos = -0.007        # Penalize hip movement to encourage more natural gaits
             feet_step = -0.5
@@ -208,7 +208,7 @@ class GO2BaseCfg(LeggedRobotCfg):
         resampling_time = 10.  # time before command are changed[s]
         heading_command = True  # if true: compute ang vel command from heading error
 
-        use_stop_and_go = False
+        use_stop_and_go = True
         moving_time_range = [3.0, 6.0]   # seconds robot moves
         stop_time_range   = [2.0, 4.0]   # seconds robot stays stopped
 

@@ -330,7 +330,7 @@ def discrete_obstacles_terrain_cells(
     terrain.height_field_raw[x1:x2, y1:y2] = 0
     return terrain
 
-def full_lenght_obstacle_terrain(terrain, min_height, max_height, num_rects, width=0.1, platform_size=3.0, min_gap=0.5):
+def full_lenght_obstacle_terrain(terrain, min_height, max_height, num_rects, width=0.1, platform_size=3.0, min_gap=1.1, max_gap=2.5):
     """
     Generate a terrain with full-length stripe obstacles.
 
@@ -338,30 +338,35 @@ def full_lenght_obstacle_terrain(terrain, min_height, max_height, num_rects, wid
         terrain (terrain): the terrain
         min_height (float): minimum height of obstacles [meters]
         max_height (float): maximum height of obstacles [meters]
-        num_rects (int): number of stripes to place (limited by min_gap constraint)
+        num_rects (int): maximum number of stripes to place
         width (float): width (thickness) of each stripe [meters]
         platform_size (float): size of the flat starting platform at center [meters]
         min_gap (float): minimum gap between consecutive stripes [meters]
+        max_gap (float): maximum gap between consecutive stripes [meters]
     """
     platform_size_px = int(platform_size / terrain.horizontal_scale)
     width_px = max(1, int(width / terrain.horizontal_scale))
     min_gap_px = int(min_gap / terrain.horizontal_scale)
-    height = (min_height + np.random.rand() * (max_height - min_height)) / terrain.vertical_scale
+    max_gap_px = int(max_gap / terrain.horizontal_scale)
 
     (n_x, n_y) = terrain.height_field_raw.shape
 
-    # Build a grid of candidate positions with guaranteed minimum separation.
-    # Each stripe occupies width_px pixels; next stripe starts at least min_gap_px later.
-    stride = width_px + min_gap_px
-    candidates = list(range(0, n_x - width_px + 1, stride))
+    # Sequential random placement: each stripe gets its own random height and
+    # a uniformly random gap in [min_gap, max_gap] from the previous one.
+    # This prevents the WM from learning a fixed temporal period between stripes.
+    pos = np.random.randint(0, min_gap_px + 1)
+    placed = 0
+    stripe_info = []
+    while pos + width_px <= n_x and placed < num_rects:
+        height = (min_height + np.random.rand() * (max_height - min_height)) / terrain.vertical_scale
+        terrain.height_field_raw[pos: pos + width_px, :] = height
+        stripe_info.append((pos * terrain.horizontal_scale, height * terrain.vertical_scale))
+        gap = np.random.randint(min_gap_px, max_gap_px + 1)
+        pos += width_px + gap
+        placed += 1
 
-    # Randomly select up to num_rects positions from the candidate grid.
-    n_place = min(num_rects, len(candidates))
-    if n_place > 0:
-        selected_indices = np.random.choice(len(candidates), n_place, replace=False)
-        for idx in selected_indices:
-            pos = candidates[idx]
-            terrain.height_field_raw[pos: pos + width_px, :] = height
+    # print(f"[terrain] {placed} stripes placed: " +
+    #      ", ".join(f"x={x:.2f}m h={h*100:.1f}cm" for x, h in stripe_info))
 
     # Clear central flat platform (spawn area).
     x1 = (n_x - platform_size_px) // 2
