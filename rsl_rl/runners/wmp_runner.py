@@ -179,8 +179,11 @@ class WMPRunner:
         image_shape = self.env.cfg.depth.resized + (1,)
         obs_shape = {'prop': (prop_dim,), 'image': image_shape,}
 
+        self.wm_config.footprint_dim = self.env.footprint_dim
         self._world_model = WorldModel(self.wm_config, obs_shape, use_camera=self.env.cfg.depth.use_camera)
         self._world_model = self._world_model.to(self._world_model.device)
+        print(f'[WM] binary_footprint head dim: {self.wm_config.footprint_dim} '
+              f'({self.env.cfg.terrain.footprint_length_points}x{self.env.cfg.terrain.footprint_width_points})')
         print('Finish construct world model')
         self.wm_feature_dim = self.wm_config.dyn_deter #+ self.wm_config.dyn_stoch * self.wm_config.dyn_discrete
 
@@ -600,7 +603,9 @@ class WMPRunner:
     def load(self, path, load_optimizer=True, load_wm_optimizer = False):
         loaded_dict = torch.load(path, map_location=self.device)
         self.alg.actor_critic.load_state_dict(loaded_dict['model_state_dict'], strict=False)
-        self._world_model.load_state_dict(loaded_dict['world_model_dict'], strict=False)
+        _wm_sd = loaded_dict['world_model_dict']
+        _wm_sd = {k.replace('heads.binary_heightmap', 'heads.binary_footprint'): v for k, v in _wm_sd.items()}
+        self._world_model.load_state_dict(_wm_sd, strict=False)
         if(load_wm_optimizer):
             self._world_model._model_opt._opt.load_state_dict(loaded_dict['wm_optimizer_state_dict'])
         # self.alg.discriminator.load_state_dict(loaded_dict['discriminator_state_dict'], strict=False)

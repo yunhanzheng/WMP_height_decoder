@@ -54,7 +54,7 @@ def play(args):
     # override some parameters for testing
     # env_cfg.env.num_envs = min(env_cfg.env.num_envs, 50)
     env_cfg.env.num_envs = 1
-    env_cfg.env.episode_length_s = 12 #20
+    env_cfg.env.episode_length_s = 20 #20
     env_cfg.terrain.num_rows = 10
     env_cfg.terrain.num_cols = 1
     env_cfg.terrain.terrain_length = 7.5
@@ -95,7 +95,7 @@ def play(args):
     env_cfg.domain_rand.stiffness_multiplier_range = [1.0, 1.0]
     env_cfg.domain_rand.damping_multiplier_range = [1.0, 1.0]
 
-    env_cfg.commands.ranges.lin_vel_x = [1.0, 1.0]
+    env_cfg.commands.ranges.lin_vel_x = [0.8, 0.8]
     env_cfg.commands.ranges.lin_vel_y = [0.0, 0.0]
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
     env_cfg.commands.ranges.heading = [0.0, 0.0]
@@ -139,6 +139,33 @@ def play(args):
         else:
             export_policy_as_jit(ppo_runner.alg.actor_critic, export_dir)
             print('Exported policy as jit script to:', export_dir)
+
+    # --- Cat experiment: detect nearest stripe in front of robot ---
+    if CAT_TEST:
+        _hs = env.terrain.cfg.horizontal_scale
+        _vs = env.terrain.cfg.vertical_scale
+        _border = env.terrain.cfg.border_size
+        _threshold = int(0.02 / _vs)  # 2 cm in height_sample units
+        _init_x = env.root_states[0, 0].item()
+        _init_y = env.root_states[0, 1].item()
+        _iy = int((_init_y + _border) / _hs)
+        _iy = np.clip(_iy, 0, env.height_samples.shape[1] - 1)
+        _ix_start = int((_init_x + _border) / _hs)
+        cat_stripe_x = None
+        for _ix in range(_ix_start, min(_ix_start + int(8.0 / _hs), env.height_samples.shape[0] - 1)):
+            if env.height_samples[_ix, _iy].item() > _threshold:
+                cat_stripe_x = _ix * _hs - _border
+                break
+        if cat_stripe_x is not None:
+            print(f"[cat_test] Stripe detected at x={cat_stripe_x:.3f}m (robot starts at x={_init_x:.3f}m)")
+        else:
+            print("[cat_test] WARNING: no stripe detected in front of robot, cat test disabled")
+            cat_stripe_x = None
+
+        CAT_STOP_S = 2.0  # seconds to hold the stop — edit here to change
+        cat_resume_vel = env_cfg.commands.ranges.lin_vel_x[0]
+        cat_phase = 'walking'
+        cat_stop_step = None
 
     logger = Logger(env.dt)
     robot_index = 0 # which robot is used for logging
@@ -330,6 +357,30 @@ def play(args):
         # Signals for cross-correlation look-ahead analysis
         fl_foot_z_history = []   # FL foot world-frame z height (front foot signal)
         rl_foot_z_history = []   # RL foot world-frame z height (rear foot signal)
+
+        # Live binary footprint visualization
+        _bh_fig = _bh_ax = _bh_img = None
+        _bh_nx = env.cfg.terrain.footprint_length_points
+        _bh_ny = env.cfg.terrain.footprint_width_points
+        if VISUALIZE_BINARY_HEIGHT and "binary_footprint" in world_model.heads:
+            _bh_half_x = 0.05 * (_bh_nx // 2) + 0.025
+            _bh_half_y = 0.05 * (_bh_ny // 2) + 0.025
+            plt.ion()
+            _bh_fig, _bh_ax = plt.subplots(figsize=(4, 7))
+            _bh_img = _bh_ax.imshow(
+                np.zeros((_bh_nx, _bh_ny)), cmap='RdYlGn', vmin=0, vmax=1,
+                aspect='auto', interpolation='nearest',
+                extent=[-_bh_half_y, _bh_half_y, -_bh_half_x, _bh_half_x],
+                origin='upper',
+            )
+            _bh_ax.set_xlabel('lateral y (m)')
+            _bh_ax.set_ylabel('forward x (m,  +up = front)')
+            _bh_ax.set_title(f'WM binary footprint ({_bh_nx}×{_bh_ny})\n(green = obstacle)')
+            _bh_ax.axhline(y=0, color='blue', linewidth=0.5, alpha=0.4)
+            _bh_ax.axvline(x=0, color='blue', linewidth=0.5, alpha=0.4)
+            plt.colorbar(_bh_img, ax=_bh_ax, label='P(obstacle)')
+            _bh_fig.tight_layout()
+            plt.pause(0.001)
     else:
         wm_feature = None
         latent_history = None
@@ -367,6 +418,21 @@ def play(args):
     total_reward = 0
     not_dones = torch.ones((env.num_envs,), device=env.device)
     for i in range(1*int(env.max_episode_length) + 3):
+        # --- Cat experiment state machine ---
+        if CAT_TEST and cat_stripe_x is not None:
+            robot_x = env.root_states[robot_index, 0].item()
+            if cat_phase == 'walking' and robot_x >= cat_stripe_x-0.10:
+                cat_phase = 'stopped'
+                cat_stop_step = i
+                env.commands[robot_index, :3] = 0.0
+                print(f"[cat_test] STOP  at step {i}, robot_x={robot_x:.3f}m")
+            elif cat_phase == 'stopped':
+                env.commands[robot_index, :3] = 0.0
+                if (i - cat_stop_step) * env.dt >= CAT_STOP_S:
+                    cat_phase = 'resumed'
+                    env.commands[robot_index, 0] = cat_resume_vel
+                    print(f"[cat_test] RESUME at step {i}, stopped for {CAT_STOP_S:.1f}s")
+
         if use_world_model:
             if (env.global_counter % wm_update_interval == 0):
                 if (env.cfg.depth.use_camera):
@@ -396,6 +462,16 @@ def play(args):
                         decoded_dof_pos = decoded_prop[:, 9:21]  # dof_pos at indices 9:21
                         decoded_dof_vel = decoded_prop[:, 21:33]  # dof_vel at indices 21:33
                         env.draw_ghost_robot(decoded_dof_pos)
+
+                # Live binary footprint probability map
+                if VISUALIZE_BINARY_HEIGHT and _bh_img is not None:
+                    with torch.no_grad():
+                        _bh_feat = world_model.dynamics.get_feat(wm_latent)
+                        _bh_probs = world_model.heads["binary_footprint"](_bh_feat).mean
+                    _bh_grid = _bh_probs[robot_index].cpu().numpy().reshape(_bh_nx, _bh_ny)[::-1, :]
+                    _bh_img.set_data(_bh_grid)
+                    _bh_fig.canvas.flush_events()
+                    plt.pause(0.001)
 
         if use_world_model:
             history = trajectory_history.flatten(1).to(env.device)
@@ -574,7 +650,7 @@ def play(args):
             if REAR_VIEW:
                 camara_position = lootat.detach().cpu().numpy() + [-1.5, 0, 0.5] # rear view
             else:
-                camara_position = lootat.detach().cpu().numpy() + [0, 1, 0] # side view
+                camara_position = lootat.detach().cpu().numpy() + [-0.5, 1.0, 0.3] # side view, slightly from behind
             env.set_camera(camara_position, lootat)
 
         if i < stop_state_log:
@@ -790,5 +866,7 @@ if __name__ == '__main__':
     VISUALIZE_LATENT = args.visualize_latent
     VISUALIZE_SENSITIVITY = args.visualize_sensitivity
     VISUALIZE_LATENT_SENSITIVITY = args.visualize_latent_sensitivity
+    CAT_TEST = args.cat_test
+    VISUALIZE_BINARY_HEIGHT = args.visualize_binary_height
 
     play(args)

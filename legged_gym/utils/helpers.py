@@ -180,7 +180,8 @@ def get_args():
         {"name": "--visualize-latent", "action": "store_true", "default": False, "help": "Visualize world model latent space as heatmap"},
         {"name": "--visualize-sensitivity", "action": "store_true", "default": False, "help": "Visualize saliency of FL-foot height w.r.t. proprioception history"},
         {"name": "--visualize-latent-sensitivity", "action": "store_true", "default": False, "help": "Visualize saliency of 32-dim wm_latent w.r.t. proprioception history (unrolled WM)"},
-
+        {"name": "--cat-test", "action": "store_true", "default": False, "help": "Run cat experiment: stop robot at first stripe, hold, then resume"},
+        {"name": "--visualize-binary-height", "action": "store_true", "default": False, "help": "Show live binary footprint probability map from world model decoder"},
     ]
     # parse arguments
     args = gymutil.parse_arguments(

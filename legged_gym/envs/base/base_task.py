@@ -69,7 +69,10 @@ class BaseTask():
 
         self.height_dim = cfg.env.height_dim
         self.privileged_dim = cfg.env.privileged_dim
-        self.footprint_dim = getattr(cfg.env, 'footprint_dim', 0)
+        if hasattr(cfg.terrain, 'footprint_length_points'):
+            self.footprint_dim = cfg.terrain.footprint_length_points * cfg.terrain.footprint_width_points
+        else:
+            self.footprint_dim = getattr(cfg.env, 'footprint_dim', 0)
 
         # optimization flags for pytorch JIT
         torch._C._jit_set_profiling_mode(False)

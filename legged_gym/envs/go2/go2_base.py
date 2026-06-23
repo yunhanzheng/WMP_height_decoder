@@ -215,7 +215,7 @@ class GO2BaseCfg(LeggedRobotCfg):
         resampling_time = 10.  # time before command are changed[s]
         heading_command = True  # if true: compute ang vel command from heading error
 
-        use_stop_and_go = True
+        use_stop_and_go = False
         moving_time_range = [3.0, 6.0]   # seconds robot moves
         stop_time_range   = [2.0, 4.0]   # seconds robot stays stopped
 
