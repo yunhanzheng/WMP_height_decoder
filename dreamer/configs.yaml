@@ -26,7 +26,7 @@ defaults:
 
   # use footprint binary decoder (predicts obstacle presence in robot footprint area)
   use_footprint_decoder: True
-  footprint_dim: 207
+
 
   encoder:
     {mlp_keys: '.*', cnn_keys: 'image', act: 'SiLU', norm: True, cnn_depth: 32, kernel_size: 4, minres: 4, mlp_layers: 5, mlp_units: 1024, symlog_inputs: True}
