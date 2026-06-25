@@ -1,6 +1,11 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-training_stage = 2  # 1 = domino terrain + full cmd_vel; 2 = full lenght stripe terrain + forward-only cmd_vel
+training_stage = 1  # 1 = domino terrain + full cmd_vel; 2 = full lenght stripe terrain + forward-only cmd_vel
+
+def _footprint_range(n_points, step=0.05):
+    """Centered grid of n_points with given step size."""
+    start = -step * (n_points // 2)
+    return [round(start + step * i, 4) for i in range(n_points)]
 
 class GO2BaseCfg(LeggedRobotCfg):
     """Base configuration for GO2 robot variants, containing shared settings"""
@@ -9,10 +14,12 @@ class GO2BaseCfg(LeggedRobotCfg):
 
         if training_stage == 1:
             # domino terrain
-            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]
         elif training_stage == 2:
-            # full length stripe terrain
-            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+            # [8]: sparse stripes (footprint-friendly, 3-5 per tile, 1.1-2.5 m gaps)
+            #terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+            # [9]: dense stripes  (ma_hd style, up to 24*difficulty, random placement)
+            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
         border_size = 25
         mesh_type = "trimesh"
@@ -49,11 +56,11 @@ class GO2BaseCfg(LeggedRobotCfg):
                                      2.0]  # 1mx1.6m rectangle (without center line)
         measured_forward_points_y = [-1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.,
                                      0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2]
-        # footprint area for binary height decoder (independent of measured_points)
-        # x: [-0.55, 0.55] @ 0.05m → 23 points; y: [-0.2, 0.2] @ 0.05m → 9 points; total 207
-        footprint_points_x = [-0.55, -0.50, -0.45, -0.40, -0.35, -0.30, -0.25, -0.20, -0.15, -0.10, -0.05, 0.00,
-                               0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55]
-        footprint_points_y = [-0.20, -0.15, -0.10, -0.05, 0.00, 0.05, 0.10, 0.15, 0.20]
+        # footprint area for binary height decoder — change only these two numbers
+        footprint_length_points = 33   # along x (forward/backward), 5 cm spacing
+        footprint_width_points  = 21   # along y (lateral), 5 cm spacing
+        footprint_points_x = _footprint_range(footprint_length_points)
+        footprint_points_y = _footprint_range(footprint_width_points)
 
     class init_state(LeggedRobotCfg.init_state):
         pos = [0.0, 0.0, 0.38]  # x,y,z [m]
@@ -171,10 +178,10 @@ class GO2BaseCfg(LeggedRobotCfg):
             smoothness = -0.01
             feet_air_time = 0.01
             collision = -1
-            feet_stumble = -0.3
+            feet_stumble = -0.1
             stand_still = -0.01     # Penalize motion at zero commands
             hip_pos = -0.007        # Penalize hip movement to encourage more natural gaits
-            feet_step = -0.5
+            feet_step = -0.0
         only_positive_rewards = (
             False  # if true negative total rewards are clipped at zero (avoids early termination problems)
         )

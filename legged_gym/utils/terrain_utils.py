@@ -378,6 +378,29 @@ def full_lenght_obstacle_terrain(terrain, min_height, max_height, num_rects, wid
     return terrain
 
 
+def dense_stripe_terrain(terrain, min_height, max_height, num_rects, width=0.1, platform_size=3.0):
+    """
+    Full-length stripe terrain with random placement (ma_hd stage-2 style).
+    All stripes share a single random height; positions are drawn independently
+    with no gap enforcement, so stripes can be as close as 8 px (~40 cm) apart.
+    """
+    platform_size_px = int(platform_size / terrain.horizontal_scale)
+    width_px = max(1, int(width / terrain.horizontal_scale))
+    height = (min_height + np.random.rand() * (max_height - min_height)) / terrain.vertical_scale
+
+    (n_x, n_y) = terrain.height_field_raw.shape
+    for _ in range(num_rects):
+        start_i = np.random.choice(range(0, n_x - width_px, 8))
+        terrain.height_field_raw[start_i: start_i + width_px, :] = height
+
+    x1 = (n_x - platform_size_px) // 2
+    x2 = (n_x + platform_size_px) // 2
+    y1 = (n_y - platform_size_px) // 2
+    y2 = (n_y + platform_size_px) // 2
+    terrain.height_field_raw[x1:x2, y1:y2] = 0
+    return terrain
+
+
 def wave_terrain(terrain, num_waves=1, amplitude=1.0):
     """
     Generate a wavy terrain

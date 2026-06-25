@@ -304,6 +304,18 @@ class Terrain:
                 min_gap=1.1,
                 max_gap=2.5,
             )
+        elif choice < self.proportions[9]:
+            # Dense full-length stripe terrain (ma_hd stage-2 style)
+            # Many stripes, randomly placed, all same height — gives high crossing frequency
+            num_rectangles = int(24 * difficulty)
+            min_h = min(0.08 + difficulty * 0.10, 0.13)
+            max_h = min(0.10 + difficulty * 0.10, 0.15)
+            terrain_utils.dense_stripe_terrain(
+                terrain,
+                min_h,
+                max_h,
+                num_rects=num_rectangles,
+            )
         else:
             pit_terrain(terrain, depth=pit_depth, platform_size=4.0)
 

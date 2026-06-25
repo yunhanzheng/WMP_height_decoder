@@ -1,0 +1,215 @@
+Differences: wm_cat vs ma_hd
+Generated from: git diff ma_hd...wm_cat
+===============================================================
+
+
+1. WORLD MODEL — Binary Decoder (dreamer/configs.yaml, dreamer/models.py)
+----------------------------------------------------------------------
+- Decoder renamed: binary_heightmap → binary_footprint
+- Config flag renamed: use_binary_heightmap → use_footprint_decoder
+- Input dimension changed: height_dim=187 → footprint_dim=207
+- Config section renamed: binary_heightmap → footprint_decoder
+- Gradient head updated: 'binary_heightmap' → 'binary_footprint'
+- Loss scale key updated accordingly
+- Trailing blank line removed from configs.yaml
+
+What changed conceptually:
+  ma_hd: world model predicts a binary heightmap derived from the
+          privileged height observation (obs[:, -height_dim:] < 0.0).
+  wm_cat: world model predicts a binary footprint derived from raw
+          terrain heights sampled at footprint points around the robot
+          (footprint_heights > 0.0). This is independent of the
+          privileged obs and covers a 17x11 grid at 5 cm spacing
+          (0.8 m x 0.5 m centered on the robot).
+
+
+2. ENVIRONMENT BASE — FootprintDim Initialization (legged_gym/envs/base/base_task.py)
+----------------------------------------------------------------------
+- Added self.footprint_dim, derived from terrain config if available,
+  otherwise falls back to cfg.env.footprint_dim (default 0).
+
+
+3. ENVIRONMENT BASE — Footprint Height Sampling (legged_gym/envs/base/legged_robot.py)
+----------------------------------------------------------------------
+New methods added:
+  _init_footprint_height_points(): initializes a (num_envs, N, 3)
+    tensor of footprint sample points in base frame (meshgrid of
+    footprint_points_x × footprint_points_y).
+  _get_footprint_heights(): samples terrain heights at footprint
+    points using quat_apply_yaw; returns raw heights in meters.
+    Takes min of 3 neighboring cells (conservative estimate).
+  get_footprint_map(): public interface used by the runner to read
+    measured_footprint_heights.
+
+Integration:
+  - _post_physics_step now calls _get_footprint_heights() every step
+    if footprint_height_points exists.
+  - _init_buffers initializes measured_footprint_heights = 0 and
+    sets up footprint_height_points if footprint_points_x is in cfg.
+
+
+4. REWARD FUNCTIONS (legged_gym/envs/base/legged_robot.py)
+----------------------------------------------------------------------
+a) _reward_base_height:
+   ma_hd:  base_height = mean(root_states[:,2] - measured_heights)
+             (terrain-relative, accounts for ground level)
+   wm_cat: base_height = root_states[:,2]
+             (absolute world-frame z)
+
+b) _reward_feet_step (contact force clipping threshold):
+   ma_hd:  z_ans[z_ans > 1] = 1
+   wm_cat: z_ans[z_ans > 2] = 1
+   (threshold doubled, makes the clip less aggressive)
+
+
+5. ROBOT CONFIG (legged_gym/envs/go2/go2_base.py)
+----------------------------------------------------------------------
+a) Training stage:
+   ma_hd:  training_stage = 1  (domino terrain + full cmd_vel)
+   wm_cat: training_stage = 2  (full-length stripe terrain + forward-only)
+
+b) New helper function:
+   wm_cat adds _footprint_range(n_points, step=0.05) to generate
+   centered point grids.
+
+c) Terrain — footprint grid definition (new in wm_cat):
+   footprint_length_points = 23   # x: -0.55 to +0.55 m (1.1m m total)
+   footprint_width_points  = 9   # y: -0.2 to +0.2 m (1.1m m total)
+   footprint_points_x = _footprint_range(23)
+   footprint_points_y = _footprint_range(9)
+
+d) Normalization:
+   ma_hd:  normalization.base_height = 0.30
+   wm_cat: normalization.base_height = 0.35
+
+e) Reward scales:
+   ma_hd:  feet_stumble = -0.1
+   wm_cat: feet_stumble = -0.3   (3× stronger)
+
+   ma_hd:  feet_step not present
+   wm_cat: feet_step = -0.5      (new penalty)
+
+f) Reward thresholds:
+   ma_hd:  base_height_target = 0.30
+   wm_cat: base_height_target = 0.35
+
+
+6. BLIND CONFIG (legged_gym/envs/go2/go2_blind_config.py)
+----------------------------------------------------------------------
+wm_cat adds:
+   footprint_dim = 23 * 9  # = 207
+
+7. TERRAIN GENERATION — Stage 2 Stripes (legged_gym/utils/terrain.py)
+----------------------------------------------------------------------
+                    ma_hd                   wm_cat
+Stripe count:   int(24 * difficulty)     randint(3, 6)
+Min height:     min(0.08+d*0.10, 0.13)  0.05 + d*0.08
+Max height:     min(0.10+d*0.10, 0.15)  0.07 + d*0.08
+Gap control:    none (random placement) min_gap=1.1m, max_gap=2.5m
+Placement:      random anywhere          sequential with random gaps
+
+Motivation for wm_cat changes:
+  - Stripe count reduced so the footprint (0.8 m in x) sees at most
+    one stripe at a time. At 30 cm spacing the footprint would capture
+    2–3 stripes simultaneously, making binary prediction ambiguous.
+  - Sequential placement with random gaps prevents the world model
+    from learning a fixed temporal period between stripe crossings.
+  - Heights start lower (5 cm at d=0) for curriculum smoothness.
+
+
+8. TERRAIN UTILS — full_lenght_obstacle_terrain (legged_gym/utils/terrain_utils.py)
+----------------------------------------------------------------------
+Signature extended:
+  Added min_gap and max_gap parameters (default 1.1 m and 2.5 m).
+
+Algorithm rewritten:
+  ma_hd:  places num_rects stripes at random x positions (can overlap,
+          no gap enforcement). All stripes share the same random height.
+  wm_cat: places stripes sequentially from a random start position.
+          Each stripe gets its own independent random height.
+          Gap between consecutive stripes is drawn from [min_gap, max_gap].
+          Placement stops when tile end or num_rects is reached.
+          Clears the central spawn platform at the end.
+
+
+9. PLAY SCRIPT (legged_gym/scripts/play.py)
+----------------------------------------------------------------------
+a) Play difficulty:
+   ma_hd:  env_cfg.terrain.difficulty = 0.1
+   wm_cat: env_cfg.terrain.difficulty = 0.4
+
+b) Command velocity during play:
+   ma_hd:  lin_vel_x = [1.0, 1.0]
+   wm_cat: lin_vel_x = [0.8, 0.8]
+
+c) Camera angle:
+   ma_hd:  offset [0, 1, 0]       (pure side view)
+   wm_cat: offset [-0.5, 1.0, 0.3] (slightly behind and elevated)
+
+d) Cat-test experiment (new in wm_cat):
+   --cat-test flag: detects the nearest stripe in front of robot 0,
+   stops commands when robot is 10 cm from the stripe, holds for 2 s,
+   then resumes at cat_resume_vel = lin_vel_x[0].
+
+e) Binary footprint live visualization (new in wm_cat):
+   --visualize-binary-height flag: opens a matplotlib window showing
+   the world model's binary_footprint head probabilities as a 17×11
+   heatmap (green = obstacle) updated every wm_update_interval steps.
+
+
+10. ARGUMENT PARSER (legged_gym/utils/helpers.py)
+----------------------------------------------------------------------
+Two new CLI flags added in wm_cat:
+  --cat-test
+  --visualize-binary-height
+
+
+11. WMP RUNNER (rsl_rl/runners/wmp_runner.py)
+----------------------------------------------------------------------
+a) W&B project name:
+   ma_hd:  project="wmp_hd"
+   wm_cat: project="wmp_fs_hd"
+
+b) World model construction:
+   wm_cat injects env.footprint_dim into wm_config before building
+   the WorldModel, overriding the config-file value.
+   Prints footprint head dimensions on startup.
+
+c) Data buffer — target signal changed:
+   ma_hd:  stores binary_heightmap = (obs[:, -height_dim:] < 0.0)
+             derived from privileged height observations.
+   wm_cat: stores binary_footprint = (env.get_footprint_map() > 0.0)
+             derived from direct terrain height sampling at footprint
+             points (independent of privileged obs).
+
+d) Dataset/buffer allocation:
+   Intermediate variable T introduced to avoid repeating the episode
+   length expression (code cleanup, no functional change).
+   Buffer key renamed: binary_heightmap → binary_footprint
+   Buffer dimension: height_dim (187) → footprint_dim (207)
+
+e) Checkpoint loading (backward compatibility):
+   wm_cat renames keys on load:
+     'heads.binary_heightmap.*' → 'heads.binary_footprint.*'
+   Allows loading ma_hd checkpoints into wm_cat model.
+
+
+===============================================================
+Summary of key design decisions in wm_cat:
+
+1. Footprint decoder replaces heightmap decoder: predicts obstacle
+   presence in a 0.8×0.5 m area around the robot from raw terrain
+   samples, not from the privileged observation encoding.
+
+2. Stripe count reduced (24→3-5) to ensure footprint sees only one
+   stripe at a time. Trade-off: fewer crossing events per episode.
+
+3. Sequential stripe placement with random gaps (1.1–2.5 m) to
+   prevent world model from learning fixed temporal obstacle period.
+
+4. base_height reward changed from terrain-relative to absolute z.
+
+5. feet_stumble penalty tripled; feet_step penalty added.
+
+6. Cat-test infrastructure added to play.py for evaluating stop-and-
+   resume crossing behavior.

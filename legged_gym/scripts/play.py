@@ -63,7 +63,8 @@ def play(args):
     env_cfg.terrain.difficulty = 0.4 # use 0.1 for latent heatmap
     
     #env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
-    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    #env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
     env_cfg.init_state.pos = [0.0, 0.0, 0.38]
 
     # env_cfg.terrain.difficulty = 0.15  # use 0.15 for stripe obstacle
