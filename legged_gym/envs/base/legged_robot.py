@@ -1032,7 +1032,7 @@ class LeggedRobot(BaseTask):
         sensor_tensor = self.gym.acquire_force_sensor_tensor(self.sim)
         self.gym.refresh_force_sensor_tensor(self.sim)
         force_sensor_readings = gymtorch.wrap_tensor(sensor_tensor)
-        self.sensor_forces = force_sensor_readings.view(self.num_envs, 4, 6)[..., :3]
+        self.sensor_forces = force_sensor_readings.view(self.num_envs, len(self.feet_indices), 6)[..., :3]
 
         self.rigid_body_states_all = gymtorch.wrap_tensor(rigid_body_state)
         if getattr(self, 'visualize_ghost', False):
