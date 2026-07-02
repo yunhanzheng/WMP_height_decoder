@@ -1,5 +1,7 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
+training_stage = 1  # 1 = domino terrain + full cmd_vel; 2 = full length stripe terrain + forward-only cmd_vel
+
 
 def _footprint_range(n_points, step=0.05):
     """Centered grid of n_points with given step size."""
@@ -16,12 +18,19 @@ class G1BaseCfg(LeggedRobotCfg):
     """
 
     class terrain(LeggedRobotCfg.terrain):
+
+        if training_stage == 1:
+            # domino terrain
+            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]
+        elif training_stage == 2:
+            # [8]: sparse stripes (footprint-friendly, 3-5 per tile, 1.1-2.5 m gaps)
+            #terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+            # [9]: dense stripes (ma_hd style, up to 24*difficulty, random placement)
+            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+
         mesh_type = "trimesh"
-        # Start flat and let the curriculum raise difficulty as the biped succeeds.
-        # proportions[0] -> pyramid_sloped_terrain (slope = difficulty*0.4, i.e. flat at level 0).
-        terrain_proportions = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         curriculum = True
-        max_init_terrain_level = 0  # everyone starts on flat ground
+        max_init_terrain_level = 5  # starting curriculum state (same as go2_base)
         border_size = 25
         terrain_length = 7.5
         terrain_width = 7.5
@@ -213,7 +222,15 @@ class G1BaseCfg(LeggedRobotCfg):
         stop_time_range = [2.0, 4.0]
 
         class ranges:
-            lin_vel_x = [-0.6, 1.0]   # [m/s]
-            lin_vel_y = [-0.5, 0.5]   # [m/s]
-            ang_vel_yaw = [-1.0, 1.0]  # [rad/s]
-            heading = [-3.14, 3.14]
+            if training_stage == 1:
+                # full cmd_vel
+                lin_vel_x = [-1.0, 1.0]  # min max [m/s]
+                lin_vel_y = [-1.0, 1.0]  # min max [m/s]
+                ang_vel_yaw = [-3.14, 3.14]  # min max [rad]
+                heading = [-3.14, 3.14]  # min max [rad/s]
+            elif training_stage == 2:
+                # forward-only cmd_vel
+                lin_vel_x = [0.0, 1.0]  # min max [m/s]
+                lin_vel_y = [0.0, 0.0]  # min max [m/s]
+                ang_vel_yaw = [0.0, 0.0]  # min max [rad]
+                heading = [0.0, 0.0]  # min max [rad/s]
