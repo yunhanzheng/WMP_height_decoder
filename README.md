@@ -7,11 +7,37 @@ Code for the paper:
 ### [🌐 Project Website](https://wmp-loco.github.io/) | [📄 Paper](https://arxiv.org/abs/2409.16784)
    
 ## Requirements
+
+### Remote server (5090) — quick setup
+
+Code path: `~/student_projects/yunhan_zheng_WMP`  
+Conda env: `yunhan_zheng_wmp` (do **not** modify `~/.bashrc`)
+
+```bash
+cd ~/student_projects/yunhan_zheng_WMP
+bash env_setup.sh                  # one-time install
+source yunhan_env_setup.sh         # run before every training session
+bash train.sh                      # or: bash remote_train.sh
+```
+
+Training in tmux (recommended):
+
+```bash
+tmux new -s wmp
+source yunhan_env_setup.sh
+bash train.sh
+# Ctrl+B, D to detach
+```
+
+### Manual install (original README)
+
 1. Create a new python virtual env with python 3.6, 3.7 or 3.8 (3.8 recommended)
 2. Install pytorch:
     - `pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu117`
+    - On lab 5090 servers, use the custom torch wheel instead: `/home/yulong/torch-wheel-for-isaacgym/torch-2.3.0a0+git63d5e92-cp38-cp38-linux_x86_64.whl`
 3. Install Isaac Gym
     - Download and install Isaac Gym Preview 3 (Preview 2 will not work!) from https://developer.nvidia.com/isaac-gym
+    - On this server, Isaac Gym Preview 4 is available at `yanbo_wang_WMP/IsaacGym_Preview_4_Package`
     - `cd isaacgym/python && pip install -e .`
 4. Install other packages:
     - `sudo apt-get install build-essential --fix-missing`
@@ -21,6 +47,8 @@ Code for the paper:
     - `sudo apt install libgl1-mesa-glx -y`
     - `pip install opencv-contrib-python`
     - `pip install -r requirements.txt`
+    - `pip install wandb`
+    - `pip install -e . --no-deps`  # install project-local rsl_rl
 
 ## Training
 ```

@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Sync logs directory to remote server
-# Remote: yulong@131.159.60.170
+# Pull training logs from remote 5090 server to local machine
+# Run from your LOCAL machine (e.g. ubuntu22)
 
 REMOTE_USER="yulong"
 REMOTE_HOST="131.159.60.170"
-REMOTE_PATH="~/student_projects/wenshuo_rl/WMP/logs"
+REMOTE_PATH="~/student_projects/yunhan_zheng_WMP/logs"
 LOCAL_LOGS="logs"
 
 echo "Syncing ${LOCAL_LOGS} from ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}"

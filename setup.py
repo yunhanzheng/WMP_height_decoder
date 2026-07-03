@@ -1,0 +1,13 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="rsl_rl",
+    version="1.0.2",
+    author="Nikita Rudin",
+    author_email="rudinn@ethz.ch",
+    license="BSD-3-Clause",
+    packages=find_packages(include=["rsl_rl", "rsl_rl.*"]),
+    description="Fast and simple RL algorithms implemented in pytorch",
+    python_requires=">=3.6",
+    install_requires=[],
+)

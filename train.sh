@@ -1,10 +1,21 @@
 #!/bin/bash
 
-# Train GO2 Blind model
-# WMP (World Model Planner) Training Script
+# Train G1 WMP (World Model Planner)
+# Override any variable below or pass extra args as: bash train.sh --resume
 
-TASK="go2_blind"
-HEADLESS="--headless"
+TASK="g1_base"
+NUM_ENVS=4096
+MAX_ITER=15000
+SEED=1
+DEVICE="cuda:0"
 
 echo "Starting training for task: ${TASK}"
-python ./legged_gym/scripts/train.py --task=${TASK} ${HEADLESS}
+python ./legged_gym/scripts/train.py \
+    --task=${TASK} \
+    --headless \
+    --num_envs=${NUM_ENVS} \
+    --max_iterations=${MAX_ITER} \
+    --seed=${SEED} \
+    --sim_device=${DEVICE} \
+    --rl_device=${DEVICE} \
+    "$@"
