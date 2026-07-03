@@ -635,8 +635,11 @@ def play(args):
             terrain_h = torch.max(torch.max(h1, h2), torch.max(h3, h4)).float() * env.terrain.cfg.vertical_scale
             foot_z = env.rigid_body_pos[robot_index, env.feet_indices, 2]
             clearance = foot_z - terrain_h
+            body_names = env.gym.get_actor_rigid_body_names(
+                env.envs[robot_index], env.actor_handles[robot_index])
+            foot_names = [n for n in body_names if env.cfg.asset.foot_name in n]
             print(f"[step {i:4d}] base_h={base_height:.3f} | ", end="")
-            for k, name in enumerate(['FL', 'FR', 'RL', 'RR']):
+            for k, name in enumerate(foot_names):
                 print(f"{name}: fz={foot_z[k]:.3f} th={terrain_h[k]:.3f} clr={clearance[k]:.3f} | ", end="")
             print()
 

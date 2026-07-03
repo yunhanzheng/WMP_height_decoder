@@ -26,7 +26,7 @@ if "DISPLAY" not in os.environ and "--_xvfb_child" not in sys.argv:
         print("ERROR: No DISPLAY found and xvfb-run is not installed.")
         print("  Fix:  apt-get install xvfb")
         sys.exit(1)
-    cmd = ["xvfb-run", "-s", "-screen 0 1x1x24 +extension GLX",
+    cmd = ["xvfb-run", "-s", "-screen 0 1920x1080x24 +extension GLX",
            sys.executable] + sys.argv + ["--_xvfb_child"]
     print(f"No DISPLAY detected — re-execing under xvfb-run")
     sys.exit(subprocess.call(cmd))
@@ -96,6 +96,16 @@ import torch
 import imageio
 
 
+def _capture_frame(gym, sim, env_handle, cam_handle, width, height):
+    """Render and read an RGB frame from a camera sensor."""
+    gym.fetch_results(sim, True)
+    gym.step_graphics(sim)
+    gym.render_all_camera_sensors(sim)
+    rgb = gym.get_camera_image(sim, env_handle, cam_handle, gymapi.IMAGE_COLOR)
+    frame = np.array(rgb, dtype=np.uint8).reshape(height, width, 4)
+    return frame[:, :, :3]
+
+
 def play_headless(args, video_args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
 
@@ -126,10 +136,8 @@ def play_headless(args, video_args):
     # ── Make environment ───────────────────────────────────────────
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
 
-    # Destroy the auto-created viewer — we only need the camera sensor.
-    if env.viewer is not None:
-        env.gym.destroy_viewer(env.viewer)
-        env.viewer = None
+    # Keep the viewer alive — destroying it breaks the graphics pipeline
+    # and produces all-black camera frames under xvfb.
 
     # ── Attach a chase camera to env 0 ────────────────────────────
     cam_props = gymapi.CameraProperties()
@@ -209,6 +217,13 @@ def play_headless(args, video_args):
                                 quality=8)
     print(f"Recording to: {output_path}  ({video_args.cam_width}x{video_args.cam_height} @ {video_args.fps} fps)")
 
+    # Warm up graphics pipeline before recording.
+    for _ in range(5):
+        _capture_frame(
+            env.gym, env.sim, env.envs[0], cam_handle,
+            video_args.cam_width, video_args.cam_height,
+        )
+
     # ── Rollout ───────────────────────────────────────────────────
     num_steps = int(env.max_episode_length) + 3
     for i in range(num_steps):
@@ -229,13 +244,13 @@ def play_headless(args, video_args):
         # Step the simulation
         obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
 
-        # Render camera and capture frame
-        env.gym.render_all_camera_sensors(env.sim)
-        rgb = env.gym.get_camera_image(
-            env.sim, env.envs[0], cam_handle, gymapi.IMAGE_COLOR)
-        # get_camera_image returns a flat RGBA uint8 array
-        frame = rgb.reshape(video_args.cam_height, video_args.cam_width, 4)
-        writer.append_data(frame[:, :, :3])   # drop alpha
+        frame = _capture_frame(
+            env.gym, env.sim, env.envs[0], cam_handle,
+            video_args.cam_width, video_args.cam_height,
+        )
+        if i == 0:
+            print(f"  first frame pixel range: [{frame.min()}, {frame.max()}]")
+        writer.append_data(frame)
 
         # Update world-model state
         if use_world_model:
