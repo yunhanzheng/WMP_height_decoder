@@ -30,7 +30,7 @@ class G1BaseCfg(LeggedRobotCfg):
 
         mesh_type = "trimesh"
         curriculum = True
-        max_init_terrain_level = 5  # starting curriculum state (same as go2_base)
+        max_init_terrain_level = 0  # start on flat ground (level 0); curriculum raises difficulty as robot succeeds
         border_size = 25
         terrain_length = 7.5
         terrain_width = 7.5

@@ -60,12 +60,14 @@ def play(args):
     env_cfg.terrain.terrain_length = 7.5
     env_cfg.terrain.terrain_width = 7.5
     env_cfg.terrain.curriculum = False
-    env_cfg.terrain.difficulty = 0.4 # use 0.1 for latent heatmap
-    
-    #env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
-    #env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
-    env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
-    env_cfg.init_state.pos = [0.0, 0.0, 0.38]
+    # Flat ground for play (level 0 sloped terrain = plane at difficulty 0)
+    if args.task.startswith('g1'):
+        env_cfg.terrain.num_rows = 1
+        env_cfg.terrain.terrain_proportions = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    else:
+        env_cfg.terrain.difficulty = 0.4  # use 0.1 for latent heatmap
+        env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    # Use spawn height from task config (G1: 0.8 m, Go2: 0.38 m). Do not hardcode 0.38 here.
 
     # env_cfg.terrain.difficulty = 0.15  # use 0.15 for stripe obstacle
     # env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
