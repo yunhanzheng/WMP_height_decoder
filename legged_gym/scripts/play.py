@@ -60,10 +60,11 @@ def play(args):
     env_cfg.terrain.terrain_length = 7.5
     env_cfg.terrain.terrain_width = 7.5
     env_cfg.terrain.curriculum = False
-    # Flat ground for play (level 0 sloped terrain = plane at difficulty 0)
+    # Dense stripe terrain for G1 play (same as go2 play default)
     if args.task.startswith('g1'):
         env_cfg.terrain.num_rows = 1
-        env_cfg.terrain.terrain_proportions = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        env_cfg.terrain.difficulty = 0.4
+        env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
     else:
         env_cfg.terrain.difficulty = 0.4  # use 0.1 for latent heatmap
         env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
