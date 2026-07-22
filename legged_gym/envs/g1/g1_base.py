@@ -1,6 +1,6 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-training_stage = 1  # 1 = domino terrain + full cmd_vel; 2 = full length stripe terrain + forward-only cmd_vel
+training_stage = 2  # 1 = flat terrain + full cmd_vel; 2 = sparse stripe + forward-only cmd_vel
 
 
 def _footprint_range(n_points, step=0.05):
@@ -20,16 +20,16 @@ class G1BaseCfg(LeggedRobotCfg):
     class terrain(LeggedRobotCfg.terrain):
 
         if training_stage == 1:
-            # domino terrain
-            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]
+            # flat ground for basic locomotion (smooth slope at difficulty 0)
+            terrain_proportions = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            curriculum = False
+            difficulty = 0.0  # required when curriculum=False (randomized_terrain path)
         elif training_stage == 2:
-            # [8]: sparse stripes (footprint-friendly, 3-5 per tile, 1.1-2.5 m gaps)
-            #terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
-            # [9]: dense stripes (ma_hd style, up to 24*difficulty, random placement)
-            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+            # [8]: sparse stripes (3-5 per tile, gap 2.2-5.0 m); curriculum raises height by row
+            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+            curriculum = True
 
         mesh_type = "trimesh"
-        curriculum = True
         max_init_terrain_level = 0  # start on flat ground (level 0); curriculum raises difficulty as robot succeeds
         border_size = 25
         terrain_length = 7.5
@@ -116,7 +116,7 @@ class G1BaseCfg(LeggedRobotCfg):
         foot_name = "ankle_roll"
         penalize_contacts_on = ["hip", "knee"]
         terminate_after_contacts_on = ["pelvis"]
-        self_collisions = 1  # 1 to disable, 0 to enable...bitwise filter
+        self_collisions = 0  # 1 to disable, 0 to enable...bitwise filter
         flip_visual_attachments = False
 
     class domain_rand:
@@ -185,14 +185,18 @@ class G1BaseCfg(LeggedRobotCfg):
             dof_vel = -1e-3
             action_rate = -0.01
             dof_pos_limits = -5.0
+            # contact / gait (shared with GO2)
+            collision = -1.0
+            feet_stumble = -0.1
+            stand_still = -0.01
             # biped gait shaping (implemented in G1Robot)
             alive = 0.15
             contact = 0.18
             feet_swing_height = -20.0
             contact_no_vel = -0.2
             hip_pos = -1.0
-            # quadruped-only reward kept disabled (would crash with .view(-1,4))
-            feet_step = -0.0
+            # biped feet_step (obstacle top contact); set non-zero to enable
+            feet_step = -0.5
 
     class noise:
         add_noise = False
@@ -215,22 +219,22 @@ class G1BaseCfg(LeggedRobotCfg):
 
         num_commands = 4  # lin_vel_x, lin_vel_y, ang_vel_yaw, heading
         resampling_time = 10.
-        heading_command = True
+        heading_command = False  # world-frame lin_vel; yaw tracked via ang_vel_yaw directly
 
-        use_stop_and_go = False
+        use_stop_and_go = True
         moving_time_range = [3.0, 6.0]
         stop_time_range = [2.0, 4.0]
 
         class ranges:
             if training_stage == 1:
-                # full cmd_vel
+                # full cmd_vel (world-frame vx/vy + body yaw rate)
                 lin_vel_x = [-1.0, 1.0]  # min max [m/s]
                 lin_vel_y = [-1.0, 1.0]  # min max [m/s]
-                ang_vel_yaw = [-3.14, 3.14]  # min max [rad]
-                heading = [-3.14, 3.14]  # min max [rad/s]
+                ang_vel_yaw = [-1.0, 1.0]  # min max [rad/s], match unitree_rl_gym
+                heading = [-3.14, 3.14]  # unused when heading_command=False
             elif training_stage == 2:
                 # forward-only cmd_vel
                 lin_vel_x = [0.0, 1.0]  # min max [m/s]
                 lin_vel_y = [0.0, 0.0]  # min max [m/s]
-                ang_vel_yaw = [0.0, 0.0]  # min max [rad]
+                ang_vel_yaw = [0.0, 0.0]  # min max [rad/s]
                 heading = [0.0, 0.0]  # min max [rad/s]

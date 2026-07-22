@@ -301,8 +301,8 @@ class Terrain:
                 min_h,
                 max_h,
                 num_rects=num_rectangles,
-                min_gap=1.1,
-                max_gap=2.5,
+                min_gap=2.2,
+                max_gap=5.0,
             )
         elif choice < self.proportions[9]:
             # Dense full-length stripe terrain (ma_hd stage-2 style)

@@ -60,11 +60,11 @@ def play(args):
     env_cfg.terrain.terrain_length = 7.5
     env_cfg.terrain.terrain_width = 7.5
     env_cfg.terrain.curriculum = False
-    # Dense stripe terrain for G1 play (same as go2 play default)
+    # Sparse stripe terrain for G1 play (same as stage-2 training)
     if args.task.startswith('g1'):
         env_cfg.terrain.num_rows = 1
         env_cfg.terrain.difficulty = 0.4
-        env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
     else:
         env_cfg.terrain.difficulty = 0.4  # use 0.1 for latent heatmap
         env_cfg.terrain.terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
@@ -102,6 +102,8 @@ def play(args):
     env_cfg.commands.ranges.lin_vel_y = [0.0, 0.0]
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
     env_cfg.commands.ranges.heading = [0.0, 0.0]
+    # CAT controls stop/resume at stripe; disable random stop-and-go during play
+    env_cfg.commands.use_stop_and_go = False
 
     # Ghost visualization flag (uses debug drawing, doesn't affect physics)
     VISUALIZE_GHOST = getattr(args, 'visualize_ghost', False)
@@ -872,7 +874,7 @@ if __name__ == '__main__':
     VISUALIZE_LATENT = args.visualize_latent
     VISUALIZE_SENSITIVITY = args.visualize_sensitivity
     VISUALIZE_LATENT_SENSITIVITY = args.visualize_latent_sensitivity
-    CAT_TEST = args.cat_test
+    CAT_TEST = True  # stop at first stripe, hold, then resume
     VISUALIZE_BINARY_HEIGHT = args.visualize_binary_height
 
     play(args)

@@ -54,7 +54,7 @@ class G1BlindCfg(G1BaseCfg):
         invert = True
 
     class commands(G1BaseCfg.commands):
-        use_stop_and_go = False
+        use_stop_and_go = True
 
 
 class G1BlindCfgPPO(LeggedRobotCfgPPO):
@@ -81,7 +81,9 @@ class G1BlindCfgPPO(LeggedRobotCfgPPO):
         experiment_name = 'g1_blind'
         algorithm_class_name = 'PPOWMP'
         policy_class_name = 'ActorCritic'
-        use_wandb = False  # repo ships a hardcoded wandb key for another account; opt out by default
+        use_wandb = True
+        wandb_project = 'yunhan_zheng_WMP'
+        wandb_entity = None  # None = use your logged-in wandb account
 
     class depth_predictor:
         lr = 3e-4

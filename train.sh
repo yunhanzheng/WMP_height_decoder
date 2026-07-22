@@ -3,9 +3,9 @@
 # Train G1 WMP (World Model Planner)
 # Override any variable below or pass extra args as: bash train.sh --resume
 
-TASK="g1_base"
+TASK="g1_blind"
 NUM_ENVS=4096
-MAX_ITER=15000
+MAX_ITER=30000
 SEED=1
 DEVICE="cuda:0"
 

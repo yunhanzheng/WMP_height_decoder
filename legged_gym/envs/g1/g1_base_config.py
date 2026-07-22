@@ -48,7 +48,7 @@ class G1BaseTaskCfg(G1BaseCfg):
         invert = True
 
     class commands(G1BaseCfg.commands):
-        use_stop_and_go = False
+        use_stop_and_go = True
 
 
 class G1BaseCfgPPO(LeggedRobotCfgPPO):
