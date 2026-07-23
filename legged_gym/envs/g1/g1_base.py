@@ -170,13 +170,12 @@ class G1BaseCfg(LeggedRobotCfg):
         max_contact_force = 200.0
         tracking_sigma = 0.25
         only_positive_rewards = False
+        min_feet_lateral_distance = 0.1  # [m] body-frame |y_L - y_R|; penalty below this
 
         class scales:
             # task tracking
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
-            # lateral stripe hit: penalize not tracking cmd until one foot crosses
-            stripe_blocked_vel = -1.0
             # base regularization
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
@@ -197,6 +196,7 @@ class G1BaseCfg(LeggedRobotCfg):
             feet_swing_height = -20.0
             contact_no_vel = -0.2
             hip_pos = -1.0
+            feet_lateral_close = -1.0
             # biped feet_step (obstacle top contact); set non-zero to enable
             feet_step = -0.5
 

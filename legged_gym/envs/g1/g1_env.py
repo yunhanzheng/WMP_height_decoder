@@ -2,6 +2,7 @@ import numpy as np
 import torch
 
 from isaacgym import gymtorch
+from isaacgym.torch_utils import quat_rotate_inverse
 
 from legged_gym.envs.base.legged_robot import LeggedRobot
 
@@ -91,20 +92,6 @@ class G1Robot(LeggedRobot):
         xy_force = torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2)
         z_force = torch.abs(self.contact_forces[:, self.feet_indices, 2])
         return xy_force > 5.0 * z_force
-
-    def _one_foot_past_active_stripe(self):
-        return (
-            self.feet_pos[:, :, 0] > (self.active_stripe_x.unsqueeze(1) + 0.1)
-        ).any(dim=1)
-
-    def _lin_vel_tracking_error(self):
-        world_vel_xy = self.root_states[:, 7:9]
-        if self._forward_only_commands():
-            return (
-                torch.square(self.commands[:, 0] - world_vel_xy[:, 0])
-                + torch.square(world_vel_xy[:, 1])
-            )
-        return torch.sum(torch.square(self.commands[:, :2] - world_vel_xy), dim=1)
 
     def _update_swing_clearance(self):
         """On lateral stripe hit: target = stripe_h+0.08; clear after both feet cross & are low."""
@@ -202,14 +189,18 @@ class G1Robot(LeggedRobot):
     def _reward_tracking_lin_vel(self):
         # Track linear velocity in world frame (not body frame).
         # Body-frame tracking allows turning 90° and still scoring high on cmd_x.
-        return torch.exp(-self._lin_vel_tracking_error() / self.cfg.rewards.tracking_sigma)
-
-    def _reward_stripe_blocked_vel(self):
-        # Penalize low forward tracking while lateral stripe contact blocks progress;
-        # disabled once any foot has crossed past the active stripe.
-        hit = self._lateral_foot_hit()
-        active = hit.any(dim=1) & ~self._one_foot_past_active_stripe() & self._cmd_is_moving()
-        return self._lin_vel_tracking_error() * active.float()
+        world_vel_xy = self.root_states[:, 7:9]
+        if self._forward_only_commands():
+            lin_vel_error = (
+                torch.square(self.commands[:, 0] - world_vel_xy[:, 0])
+                + torch.square(world_vel_xy[:, 1])
+            )
+        else:
+            # Stage 1: commands[:, :2] are world-frame vx, vy
+            lin_vel_error = torch.sum(
+                torch.square(self.commands[:, :2] - world_vel_xy), dim=1
+            )
+        return torch.exp(-lin_vel_error / self.cfg.rewards.tracking_sigma)
 
     def _reward_alive(self):
         return torch.ones(self.num_envs, dtype=torch.float, device=self.device)
@@ -230,15 +221,32 @@ class G1Robot(LeggedRobot):
         return torch.square(self.root_states[:, 2] - target)
 
     def _reward_feet_swing_height(self):
-        # Default 0.08 m; after lateral stripe hit use stripe_h+0.08 until both feet have crossed
+        # Flat: track 0.08 m (two-sided). Near/over a stripe: target = clearance_h+0.08,
+        # only penalize under-clearance so the policy can lift early and step over.
+        # Clearance from (1) look-ahead terrain under foot and 1 m ahead, and
+        # (2) hit-latched active_stripe_height until both feet have crossed.
         contact = torch.norm(self.contact_forces[:, self.feet_indices, :3], dim=2) > 1.0
-        target_z = torch.where(
-            self.swing_clearance_active,
-            self.active_stripe_height + 0.08,
-            torch.full_like(self.active_stripe_height, 0.08),
+        fx = self.feet_pos[:, :, 0]
+        fy = self.feet_pos[:, :, 1]
+        terrain_h = torch.maximum(
+            self._sample_terrain_height_world(fx, fy),
+            self._sample_terrain_height_world(fx + 1.0, fy),
         )
-        pos_error = torch.square(self.feet_pos[:, :, 2] - target_z.unsqueeze(1)) * ~contact
-        return torch.sum(pos_error, dim=1)
+        hit_h = self.active_stripe_height.unsqueeze(1).expand_as(terrain_h)
+        clearance_h = torch.maximum(terrain_h, hit_h)
+        need_clear = (clearance_h > 0.03) | self.swing_clearance_active.unsqueeze(1)
+        target_z = torch.where(
+            need_clear,
+            clearance_h + 0.08,
+            torch.full_like(clearance_h, 0.08),
+        )
+        height_err = self.feet_pos[:, :, 2] - target_z
+        err = torch.where(
+            need_clear,
+            torch.square(torch.clamp(-height_err, min=0.0)),
+            torch.square(height_err),
+        )
+        return torch.sum(err * ~contact, dim=1)
 
     def _reward_feet_step(self):
         # Biped version of obstacle-stepping penalty (base uses .view(-1, 4)).
@@ -255,3 +263,12 @@ class G1Robot(LeggedRobot):
         contact_feet_vel = self.feet_vel * contact.unsqueeze(-1)
         penalize = torch.square(contact_feet_vel[:, :, :3])
         return torch.sum(penalize, dim=(1, 2))
+
+    def _reward_feet_lateral_close(self):
+        # Penalize body-frame lateral foot separation below min_feet_lateral_distance
+        base_pos = self.root_states[:, :3]
+        left = quat_rotate_inverse(self.base_quat, self.feet_pos[:, 0] - base_pos)
+        right = quat_rotate_inverse(self.base_quat, self.feet_pos[:, 1] - base_pos)
+        lat_sep = torch.abs(left[:, 1] - right[:, 1])
+        min_sep = self.cfg.rewards.min_feet_lateral_distance
+        return torch.square(torch.clamp(min_sep - lat_sep, min=0.0))
