@@ -221,28 +221,18 @@ class G1Robot(LeggedRobot):
         return torch.square(self.root_states[:, 2] - target)
 
     def _reward_feet_swing_height(self):
-        # Flat: track 0.08 m (two-sided). Near/over a stripe: target = clearance_h+0.08,
-        # only penalize under-clearance so the policy can lift early and step over.
-        # Clearance from (1) look-ahead terrain under foot and 1 m ahead, and
-        # (2) hit-latched active_stripe_height until both feet have crossed.
+        # Default: track 0.08 m (both sides). After lateral stripe hit: only penalize
+        # swing feet below stripe_h+0.08; higher is OK until both feet have crossed.
         contact = torch.norm(self.contact_forces[:, self.feet_indices, :3], dim=2) > 1.0
-        fx = self.feet_pos[:, :, 0]
-        fy = self.feet_pos[:, :, 1]
-        terrain_h = torch.maximum(
-            self._sample_terrain_height_world(fx, fy),
-            self._sample_terrain_height_world(fx + 1.0, fy),
-        )
-        hit_h = self.active_stripe_height.unsqueeze(1).expand_as(terrain_h)
-        clearance_h = torch.maximum(terrain_h, hit_h)
-        need_clear = (clearance_h > 0.03) | self.swing_clearance_active.unsqueeze(1)
         target_z = torch.where(
-            need_clear,
-            clearance_h + 0.08,
-            torch.full_like(clearance_h, 0.08),
-        )
+            self.swing_clearance_active,
+            self.active_stripe_height + 0.08,
+            torch.full_like(self.active_stripe_height, 0.08),
+        ).unsqueeze(1)
         height_err = self.feet_pos[:, :, 2] - target_z
+        # One-sided under-clearance while stripe clearance is active; otherwise squared error
         err = torch.where(
-            need_clear,
+            self.swing_clearance_active.unsqueeze(1),
             torch.square(torch.clamp(-height_err, min=0.0)),
             torch.square(height_err),
         )
