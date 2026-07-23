@@ -102,8 +102,9 @@ def play(args):
     env_cfg.commands.ranges.lin_vel_y = [0.0, 0.0]
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
     env_cfg.commands.ranges.heading = [0.0, 0.0]
-    # CAT controls stop/resume at stripe; disable random stop-and-go during play
-    env_cfg.commands.use_stop_and_go = False
+    # Match training: stop after stripe hit once one foot has crossed
+    env_cfg.commands.use_stop_and_go = True
+    env_cfg.commands.stop_and_go_trigger = "foot_cross"
 
     # Ghost visualization flag (uses debug drawing, doesn't affect physics)
     VISUALIZE_GHOST = getattr(args, 'visualize_ghost', False)
@@ -145,7 +146,7 @@ def play(args):
             export_policy_as_jit(ppo_runner.alg.actor_critic, export_dir)
             print('Exported policy as jit script to:', export_dir)
 
-    # --- Cat experiment: detect nearest stripe in front of robot ---
+    # --- Optional stripe scan for logging (stop/resume is env stop_and_go / foot_cross) ---
     if CAT_TEST:
         _hs = env.terrain.cfg.horizontal_scale
         _vs = env.terrain.cfg.vertical_scale
@@ -162,15 +163,10 @@ def play(args):
                 cat_stripe_x = _ix * _hs - _border
                 break
         if cat_stripe_x is not None:
-            print(f"[cat_test] Stripe detected at x={cat_stripe_x:.3f}m (robot starts at x={_init_x:.3f}m)")
+            print(f"[cat_test] Stripe at x={cat_stripe_x:.3f}m; stop uses training foot_cross stop_and_go")
         else:
-            print("[cat_test] WARNING: no stripe detected in front of robot, cat test disabled")
+            print("[cat_test] WARNING: no stripe detected in front of robot")
             cat_stripe_x = None
-
-        CAT_STOP_S = 2.0  # seconds to hold the stop — edit here to change
-        cat_resume_vel = env_cfg.commands.ranges.lin_vel_x[0]
-        cat_phase = 'walking'
-        cat_stop_step = None
 
     logger = Logger(env.dt)
     robot_index = 0 # which robot is used for logging
@@ -423,20 +419,7 @@ def play(args):
     total_reward = 0
     not_dones = torch.ones((env.num_envs,), device=env.device)
     for i in range(1*int(env.max_episode_length) + 3):
-        # --- Cat experiment state machine ---
-        if CAT_TEST and cat_stripe_x is not None:
-            robot_x = env.root_states[robot_index, 0].item()
-            if cat_phase == 'walking' and robot_x >= cat_stripe_x-0.10:
-                cat_phase = 'stopped'
-                cat_stop_step = i
-                env.commands[robot_index, :3] = 0.0
-                print(f"[cat_test] STOP  at step {i}, robot_x={robot_x:.3f}m")
-            elif cat_phase == 'stopped':
-                env.commands[robot_index, :3] = 0.0
-                if (i - cat_stop_step) * env.dt >= CAT_STOP_S:
-                    cat_phase = 'resumed'
-                    env.commands[robot_index, 0] = cat_resume_vel
-                    print(f"[cat_test] RESUME at step {i}, stopped for {CAT_STOP_S:.1f}s")
+        # Stop/resume after one foot crosses stripe is handled by env stop_and_go (foot_cross)
 
         if use_world_model:
             if (env.global_counter % wm_update_interval == 0):
@@ -874,7 +857,7 @@ if __name__ == '__main__':
     VISUALIZE_LATENT = args.visualize_latent
     VISUALIZE_SENSITIVITY = args.visualize_sensitivity
     VISUALIZE_LATENT_SENSITIVITY = args.visualize_latent_sensitivity
-    CAT_TEST = True  # stop at first stripe, hold, then resume
+    CAT_TEST = args.cat_test  # log nearest stripe; stop uses training foot_cross stop_and_go
     VISUALIZE_BINARY_HEIGHT = args.visualize_binary_height
 
     play(args)

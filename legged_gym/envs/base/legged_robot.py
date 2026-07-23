@@ -661,20 +661,36 @@ class LeggedRobot(BaseTask):
         """
         #
         if getattr(self.cfg.commands, 'use_stop_and_go', False):
-            self.cmd_phase_timer -= self.dt
-            expired = (self.cmd_phase_timer <= 0).nonzero(as_tuple=False).flatten()
-            if len(expired):
-                was_moving = self.cmd_phase_moving[expired]
-                stopping = expired[was_moving]
-                if len(stopping):
-                    self.commands[stopping, :] = 0.
-                    self.cmd_phase_moving[stopping] = False
-                    self._reset_cmd_phase_timer(stopping, moving=False)
-                starting = expired[~was_moving]
-                if len(starting):
-                    self._resample_commands(starting)
-                    self.cmd_phase_moving[starting] = True
-                    self._reset_cmd_phase_timer(starting, moving=True)
+            trigger = getattr(self.cfg.commands, 'stop_and_go_trigger', 'timer')
+            if trigger == 'timer':
+                self.cmd_phase_timer -= self.dt
+                expired = (self.cmd_phase_timer <= 0).nonzero(as_tuple=False).flatten()
+                if len(expired):
+                    was_moving = self.cmd_phase_moving[expired]
+                    stopping = expired[was_moving]
+                    if len(stopping):
+                        self.commands[stopping, :] = 0.
+                        self.cmd_phase_moving[stopping] = False
+                        self._reset_cmd_phase_timer(stopping, moving=False)
+                    starting = expired[~was_moving]
+                    if len(starting):
+                        self._resample_commands(starting)
+                        self.cmd_phase_moving[starting] = True
+                        self._reset_cmd_phase_timer(starting, moving=True)
+            else:
+                # foot_cross (or other env-driven): only resume after stop timer; enter-stop is env-side
+                stopping = ~self.cmd_phase_moving
+                if stopping.any():
+                    self.cmd_phase_timer[stopping] -= self.dt
+                    expired = (stopping & (self.cmd_phase_timer <= 0)).nonzero(as_tuple=False).flatten()
+                    if len(expired):
+                        self._resample_commands(expired)
+                        self.cmd_phase_moving[expired] = True
+                resample_steps = max(1, int(self.cfg.commands.resampling_time / self.dt))
+                env_ids = (
+                    (self.episode_length_buf % resample_steps == 0) & self.cmd_phase_moving
+                ).nonzero(as_tuple=False).flatten()
+                self._resample_commands(env_ids)
         else:
             env_ids = (self.episode_length_buf % int(self.cfg.commands.resampling_time / self.dt)==0).nonzero(as_tuple=False).flatten()
             self._resample_commands(env_ids)

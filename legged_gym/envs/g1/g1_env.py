@@ -44,6 +44,8 @@ class G1Robot(LeggedRobot):
         self.swing_clearance_active = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self.active_stripe_height = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
         self.active_stripe_x = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+        # Arm stop-and-go after stripe hit; fire when one foot has crossed
+        self.stop_and_go_armed = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
     def reset_idx(self, env_ids):
         super().reset_idx(env_ids)
@@ -52,6 +54,7 @@ class G1Robot(LeggedRobot):
         self.swing_clearance_active[env_ids] = False
         self.active_stripe_height[env_ids] = 0.0
         self.active_stripe_x[env_ids] = 0.0
+        self.stop_and_go_armed[env_ids] = False
 
     def update_feet_state(self):
         self.gym.refresh_rigid_body_state_tensor(self.sim)
@@ -83,11 +86,29 @@ class G1Robot(LeggedRobot):
             self.root_states[:, 0], self.root_states[:, 1]
         )
 
-    def _update_swing_clearance(self):
-        """On lateral stripe hit: target = stripe_h+0.08; clear after both feet cross & are low."""
+    def _lateral_foot_hit(self):
+        """Per-foot lateral stripe contact (same criterion as feet_stumble)."""
         xy_force = torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2)
         z_force = torch.abs(self.contact_forces[:, self.feet_indices, 2])
-        hit = xy_force > 5.0 * z_force
+        return xy_force > 5.0 * z_force
+
+    def _one_foot_past_active_stripe(self):
+        return (
+            self.feet_pos[:, :, 0] > (self.active_stripe_x.unsqueeze(1) + 0.1)
+        ).any(dim=1)
+
+    def _lin_vel_tracking_error(self):
+        world_vel_xy = self.root_states[:, 7:9]
+        if self._forward_only_commands():
+            return (
+                torch.square(self.commands[:, 0] - world_vel_xy[:, 0])
+                + torch.square(world_vel_xy[:, 1])
+            )
+        return torch.sum(torch.square(self.commands[:, :2] - world_vel_xy), dim=1)
+
+    def _update_swing_clearance(self):
+        """On lateral stripe hit: target = stripe_h+0.08; clear after both feet cross & are low."""
+        hit = self._lateral_foot_hit()
 
         if hit.any():
             ahead_x = self.feet_pos[:, :, 0] + 0.1
@@ -108,6 +129,8 @@ class G1Robot(LeggedRobot):
             self.active_stripe_x = torch.where(activating, new_x, self.active_stripe_x)
             # Reset contact gait phase on lateral stripe hit
             self.phase[activating] = 0.0
+            if getattr(self.cfg.commands, "stop_and_go_trigger", "timer") == "foot_cross":
+                self.stop_and_go_armed |= activating
 
         both_past = (self.feet_pos[:, :, 0] > (self.active_stripe_x.unsqueeze(1) + 0.1)).all(dim=1)
         both_low = (self.feet_pos[:, :, 2] <= 0.08).all(dim=1)
@@ -117,9 +140,31 @@ class G1Robot(LeggedRobot):
             cleared, torch.zeros_like(self.active_stripe_height), self.active_stripe_height
         )
 
+    def _maybe_trigger_stop_and_go_on_foot_cross(self):
+        """Zero cmd after stripe hit once any foot is past the stripe; resume via base stop timer."""
+        if not getattr(self.cfg.commands, "use_stop_and_go", False):
+            return
+        if getattr(self.cfg.commands, "stop_and_go_trigger", "timer") != "foot_cross":
+            return
+        if not hasattr(self, "cmd_phase_moving"):
+            return
+
+        one_foot_past = (
+            self.feet_pos[:, :, 0] > (self.active_stripe_x.unsqueeze(1) + 0.1)
+        ).any(dim=1)
+        trigger = self.stop_and_go_armed & one_foot_past & self.cmd_phase_moving
+        if not trigger.any():
+            return
+
+        self.commands[trigger] = 0.0
+        self.cmd_phase_moving[trigger] = False
+        self._reset_cmd_phase_timer(trigger.nonzero(as_tuple=False).flatten(), moving=False)
+        self.stop_and_go_armed[trigger] = False
+
     def _post_physics_step_callback(self):
         self.update_feet_state()
         self._update_swing_clearance()
+        self._maybe_trigger_stop_and_go_on_foot_cross()
 
         moving = self._cmd_is_moving()
         # Restart gait phase when command resumes after a stop
@@ -157,18 +202,14 @@ class G1Robot(LeggedRobot):
     def _reward_tracking_lin_vel(self):
         # Track linear velocity in world frame (not body frame).
         # Body-frame tracking allows turning 90° and still scoring high on cmd_x.
-        world_vel_xy = self.root_states[:, 7:9]
-        if self._forward_only_commands():
-            lin_vel_error = (
-                torch.square(self.commands[:, 0] - world_vel_xy[:, 0])
-                + torch.square(world_vel_xy[:, 1])
-            )
-        else:
-            # Stage 1: commands[:, :2] are world-frame vx, vy
-            lin_vel_error = torch.sum(
-                torch.square(self.commands[:, :2] - world_vel_xy), dim=1
-            )
-        return torch.exp(-lin_vel_error / self.cfg.rewards.tracking_sigma)
+        return torch.exp(-self._lin_vel_tracking_error() / self.cfg.rewards.tracking_sigma)
+
+    def _reward_stripe_blocked_vel(self):
+        # Penalize low forward tracking while lateral stripe contact blocks progress;
+        # disabled once any foot has crossed past the active stripe.
+        hit = self._lateral_foot_hit()
+        active = hit.any(dim=1) & ~self._one_foot_past_active_stripe() & self._cmd_is_moving()
+        return self._lin_vel_tracking_error() * active.float()
 
     def _reward_alive(self):
         return torch.ones(self.num_envs, dtype=torch.float, device=self.device)

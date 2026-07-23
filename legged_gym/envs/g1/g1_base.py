@@ -175,6 +175,8 @@ class G1BaseCfg(LeggedRobotCfg):
             # task tracking
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
+            # lateral stripe hit: penalize not tracking cmd until one foot crosses
+            stripe_blocked_vel = -1.0
             # base regularization
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
@@ -222,7 +224,10 @@ class G1BaseCfg(LeggedRobotCfg):
         heading_command = False  # world-frame lin_vel; yaw tracked via ang_vel_yaw directly
 
         use_stop_and_go = True
-        moving_time_range = [3.0, 6.0]
+        # "timer": alternate move/stop by time ranges (base default)
+        # "foot_cross": stop only after a stripe hit and one foot has crossed past it
+        stop_and_go_trigger = "foot_cross"
+        moving_time_range = [3.0, 6.0]  # used only when stop_and_go_trigger == "timer"
         stop_time_range = [2.0, 4.0]
 
         class ranges:
