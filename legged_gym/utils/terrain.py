@@ -292,17 +292,21 @@ class Terrain:
                 platform_size=1.0
             )
         elif choice < self.proportions[8]:
-            # Full length striped terrain — difficulty controls height only; count and spacing are randomized
-            num_rectangles = np.random.randint(3, 6)        # 3–5 stripes regardless of difficulty
+            # Full length striped terrain — difficulty controls height only; count and spacing from cfg
+            num_rect_min = getattr(self.cfg, "stripe_num_rects_min", 2)
+            num_rect_max = getattr(self.cfg, "stripe_num_rects_max", 3)
+            num_rectangles = np.random.randint(num_rect_min, num_rect_max + 1)
             min_h = 0.05 + difficulty * 0.08               # 5 cm at difficulty 0, 13 cm at difficulty 1
             max_h = 0.07 + difficulty * 0.08               # 7 cm at difficulty 0, 15 cm at difficulty 1
+            min_gap = getattr(self.cfg, "stripe_min_gap", 2.0)
+            max_gap = getattr(self.cfg, "stripe_max_gap", 4.0)
             terrain_utils.full_lenght_obstacle_terrain(
                 terrain,
                 min_h,
                 max_h,
                 num_rects=num_rectangles,
-                min_gap=2.2,
-                max_gap=5.0,
+                min_gap=min_gap,
+                max_gap=max_gap,
             )
         elif choice < self.proportions[9]:
             # Dense full-length stripe terrain (ma_hd stage-2 style)

@@ -98,13 +98,10 @@ def play(args):
     env_cfg.domain_rand.stiffness_multiplier_range = [1.0, 1.0]
     env_cfg.domain_rand.damping_multiplier_range = [1.0, 1.0]
 
-    env_cfg.commands.ranges.lin_vel_x = [0.8, 0.8]
+    env_cfg.commands.ranges.lin_vel_x = [0.5, 0.5] if args.task.startswith('g1') else [0.8, 0.8]
     env_cfg.commands.ranges.lin_vel_y = [0.0, 0.0]
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
     env_cfg.commands.ranges.heading = [0.0, 0.0]
-    # Match training: stop after stripe hit once one foot has crossed
-    env_cfg.commands.use_stop_and_go = True
-    env_cfg.commands.stop_and_go_trigger = "foot_cross"
 
     # Ghost visualization flag (uses debug drawing, doesn't affect physics)
     VISUALIZE_GHOST = getattr(args, 'visualize_ghost', False)
@@ -146,7 +143,7 @@ def play(args):
             export_policy_as_jit(ppo_runner.alg.actor_critic, export_dir)
             print('Exported policy as jit script to:', export_dir)
 
-    # --- Optional stripe scan for logging (stop/resume is env stop_and_go / foot_cross) ---
+    # --- Optional stripe scan for logging (mid-crossing pause is in G1Robot) ---
     if CAT_TEST:
         _hs = env.terrain.cfg.horizontal_scale
         _vs = env.terrain.cfg.vertical_scale
@@ -163,7 +160,7 @@ def play(args):
                 cat_stripe_x = _ix * _hs - _border
                 break
         if cat_stripe_x is not None:
-            print(f"[cat_test] Stripe at x={cat_stripe_x:.3f}m; stop uses training foot_cross stop_and_go")
+            print(f"[cat_test] Stripe at x={cat_stripe_x:.3f}m")
         else:
             print("[cat_test] WARNING: no stripe detected in front of robot")
             cat_stripe_x = None
@@ -419,7 +416,7 @@ def play(args):
     total_reward = 0
     not_dones = torch.ones((env.num_envs,), device=env.device)
     for i in range(1*int(env.max_episode_length) + 3):
-        # Stop/resume after one foot crosses stripe is handled by env stop_and_go (foot_cross)
+        # Mid-crossing pause (cmd=0) is handled in G1Robot during play
 
         if use_world_model:
             if (env.global_counter % wm_update_interval == 0):
@@ -857,7 +854,7 @@ if __name__ == '__main__':
     VISUALIZE_LATENT = args.visualize_latent
     VISUALIZE_SENSITIVITY = args.visualize_sensitivity
     VISUALIZE_LATENT_SENSITIVITY = args.visualize_latent_sensitivity
-    CAT_TEST = args.cat_test  # log nearest stripe; stop uses training foot_cross stop_and_go
+    CAT_TEST = args.cat_test  # log nearest stripe only
     VISUALIZE_BINARY_HEIGHT = args.visualize_binary_height
 
     play(args)
