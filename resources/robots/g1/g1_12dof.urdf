@@ -214,6 +214,7 @@
         <color rgba="0.2 0.2 0.2 1"/>
       </material>
     </visual>
+    <!-- 4 corner contact spheres (UniLab left_foot_contact_*_geom) -->
     <collision>
       <origin xyz="-0.05 0.025 -0.03" rpy="0 0 0"/>
       <geometry>
@@ -236,6 +237,49 @@
       <origin xyz="0.12 -0.03 -0.03" rpy="0 0 0"/>
       <geometry>
         <sphere radius="0.005"/>
+      </geometry>
+    </collision>
+    <!-- 7 sole capsules from UniLab left_foot{1-7}_collision (cylinder -> capsule) -->
+    <collision>
+      <origin xyz="0.075 -0.0265 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.05"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.0395 -0.018 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.167"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.039 -0.01 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.182"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.039 0 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.186"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.039 0.01 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.182"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.0395 0.018 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.167"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.075 0.026 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.05"/>
       </geometry>
     </collision>
   </link>
@@ -406,6 +450,7 @@
         <color rgba="0.2 0.2 0.2 1"/>
       </material>
     </visual>
+    <!-- 4 corner contact spheres (UniLab right_foot_contact_*_geom) -->
     <collision>
       <origin xyz="-0.05 0.025 -0.03" rpy="0 0 0"/>
       <geometry>
@@ -428,6 +473,49 @@
       <origin xyz="0.12 -0.03 -0.03" rpy="0 0 0"/>
       <geometry>
         <sphere radius="0.005"/>
+      </geometry>
+    </collision>
+    <!-- 7 sole capsules from UniLab right_foot{1-7}_collision (cylinder -> capsule) -->
+    <collision>
+      <origin xyz="0.075 -0.026 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.05"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.0395 -0.018 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.167"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.039 -0.01 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.182"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.039 0 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.186"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.039 0.01 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.182"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.0395 0.018 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.167"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.075 0.026 -0.025" rpy="0 1.570796 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.05"/>
       </geometry>
     </collision>
   </link>
