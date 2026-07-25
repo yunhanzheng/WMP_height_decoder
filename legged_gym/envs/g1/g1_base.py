@@ -2,8 +2,8 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 training_stage = 4
 # 1 = flat terrain + full cmd_vel
-# 2 = sparse stripes (3-5, 1.1-2.5 m) + forward-only, basic crossing rewards
-# 3 = sparser stripes (2-3, 2.0-4.0 m) + clean step-over (all latest fixes)
+# 2 = sparse stripes (3-5, 2.2-5.0 m) + forward-only, basic crossing rewards
+# 3 = sparse stripes (3-5, 2.2-5.0 m) + clean step-over (all latest fixes)
 # 4 = stripe mid-cross pause + aggressive clearance: capped resume, stuck penalty, clear bonus
 
 
@@ -34,24 +34,24 @@ class G1BaseCfg(LeggedRobotCfg):
             curriculum = True
             stripe_num_rects_min = 3
             stripe_num_rects_max = 5
-            stripe_min_gap = 1.1
-            stripe_max_gap = 2.5
+            stripe_min_gap = 2.2
+            stripe_max_gap = 5.0
         elif training_stage == 3:
-            # [8]: sparser stripes — clean step-over without stepping on top
+            # [8]: sparse stripes — clean step-over without stepping on top
             terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
             curriculum = True
-            stripe_num_rects_min = 2
-            stripe_num_rects_max = 3
-            stripe_min_gap = 2.0
-            stripe_max_gap = 4.0
+            stripe_num_rects_min = 3
+            stripe_num_rects_max = 5
+            stripe_min_gap = 2.2
+            stripe_max_gap = 5.0
         elif training_stage == 4:
-            # [8]: same sparser stripes as stage 3 — refine mid-cross pause + 2nd-foot clearance
+            # [8]: same sparse stripes as stage 3 — mid-cross pause + clearance
             terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
             curriculum = True
-            stripe_num_rects_min = 2
-            stripe_num_rects_max = 3
-            stripe_min_gap = 2.0
-            stripe_max_gap = 4.0
+            stripe_num_rects_min = 3
+            stripe_num_rects_max = 5
+            stripe_min_gap = 2.2
+            stripe_max_gap = 5.0
 
         mesh_type = "trimesh"
         max_init_terrain_level = 0  # start on flat ground (level 0); curriculum raises difficulty as robot succeeds

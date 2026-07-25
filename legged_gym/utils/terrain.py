@@ -293,13 +293,13 @@ class Terrain:
             )
         elif choice < self.proportions[8]:
             # Full length striped terrain — difficulty controls height only; count and spacing from cfg
-            num_rect_min = getattr(self.cfg, "stripe_num_rects_min", 2)
-            num_rect_max = getattr(self.cfg, "stripe_num_rects_max", 3)
+            num_rect_min = getattr(self.cfg, "stripe_num_rects_min", 3)
+            num_rect_max = getattr(self.cfg, "stripe_num_rects_max", 5)
             num_rectangles = np.random.randint(num_rect_min, num_rect_max + 1)
             min_h = 0.05 + difficulty * 0.08               # 5 cm at difficulty 0, 13 cm at difficulty 1
             max_h = 0.07 + difficulty * 0.08               # 7 cm at difficulty 0, 15 cm at difficulty 1
-            min_gap = getattr(self.cfg, "stripe_min_gap", 2.0)
-            max_gap = getattr(self.cfg, "stripe_max_gap", 4.0)
+            min_gap = getattr(self.cfg, "stripe_min_gap", 2.2)
+            max_gap = getattr(self.cfg, "stripe_max_gap", 5.0)
             terrain_utils.full_lenght_obstacle_terrain(
                 terrain,
                 min_h,
