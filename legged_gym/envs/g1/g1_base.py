@@ -277,8 +277,6 @@ class G1BaseCfg(LeggedRobotCfg):
         moving_time_range = [3.0, 6.0]
         stop_time_range = [2.0, 4.0]
         crossing_pause_time_range = [1.5, 3.0]
-        crossing_resume_cmd = 0.2       # soft forward speed after pause
-        crossing_resume_max_time = 2.0  # force full cmd even if not both-past yet
 
         class ranges:
             if training_stage == 1:
