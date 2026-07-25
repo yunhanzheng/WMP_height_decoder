@@ -4,7 +4,7 @@ training_stage = 4
 # 1 = flat terrain + full cmd_vel
 # 2 = sparse stripes (3-5, 1.1-2.5 m) + forward-only, basic crossing rewards
 # 3 = sparser stripes (2-3, 2.0-4.0 m) + clean step-over (all latest fixes)
-# 4 = stripe terrain + mid-crossing pause: hold with one foot over, one not; 2nd foot clears cleanly
+# 4 = stripe mid-cross pause + aggressive clearance: capped resume, stuck penalty, clear bonus
 
 
 def _footprint_range(n_points, step=0.05):
@@ -234,15 +234,18 @@ class G1BaseCfg(LeggedRobotCfg):
                 feet_step = -0.5
                 yaw_alignment = -1.0
             elif training_stage == 4:
-                crossing_pause = 1.0
-                feet_swing_height = -5.0
-                feet_air_time = 0.1
-                feet_stumble = -0.8
-                feet_obstacle_contact = -2.0
-                trailing_clearance = -2.0
+                crossing_pause = 2.0
+                crossing_clear = 5.0
+                crossing_stuck = -3.0
+                feet_swing_height = -8.0
+                feet_air_time = 0.2
+                feet_stumble = -1.5
+                feet_obstacle_contact = -4.0
+                trailing_clearance = -5.0
                 collision = -1.0
                 feet_step = -0.5
                 contact_no_vel = -0.5
+                lin_vel_z = -0.5  # allow higher steps during aggressive clearance
                 yaw_alignment = -1.0
 
     class noise:
@@ -276,7 +279,9 @@ class G1BaseCfg(LeggedRobotCfg):
         use_stop_and_go = False
         moving_time_range = [3.0, 6.0]
         stop_time_range = [2.0, 4.0]
-        crossing_pause_time_range = [1.5, 3.0]
+        crossing_pause_time_range = [2.0, 4.0]
+        # After pause: capped forward speed until both feet clear (then restore stored cmd).
+        crossing_resume_cmd = 0.4
 
         class ranges:
             if training_stage == 1:

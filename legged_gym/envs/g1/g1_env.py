@@ -49,12 +49,14 @@ class G1Robot(LeggedRobot):
         if training_stage == 4:
             self.crossing_pause_active = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
             self.crossing_pause_timer = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
-            # After one pause, block re-entry until the robot leaves the straddle.
+            # After one pause, block re-entry until both feet clear the stripe.
             self.crossing_pause_done = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
             self.crossing_cmd_stored = torch.zeros(self.num_envs, device=self.device)
-            # After pause: lead stance + rear swing until rear clears and lands.
-            self.crossing_clear_active = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
             self.crossing_stripe_x = torch.zeros(self.num_envs, device=self.device)
+            # One-frame pulse when both feet first clear after a pause.
+            self.crossing_both_cleared_event = torch.zeros(
+                self.num_envs, dtype=torch.bool, device=self.device
+            )
 
     def reset_idx(self, env_ids):
         super().reset_idx(env_ids)
@@ -66,8 +68,8 @@ class G1Robot(LeggedRobot):
             self.crossing_pause_timer[env_ids] = 0.0
             self.crossing_pause_done[env_ids] = False
             self.crossing_cmd_stored[env_ids] = 0.0
-            self.crossing_clear_active[env_ids] = False
             self.crossing_stripe_x[env_ids] = 0.0
+            self.crossing_both_cleared_event[env_ids] = False
 
     def update_feet_state(self):
         self.gym.refresh_rigid_body_state_tensor(self.sim)
@@ -100,6 +102,8 @@ class G1Robot(LeggedRobot):
 
     def _swing_clearance(self):
         """Desired clearance [m] above local terrain / stripe top."""
+        if training_stage == 4:
+            return 0.12
         return 0.08
 
     def _sample_terrain_height_world(self, world_x, world_y):
@@ -209,14 +213,14 @@ class G1Robot(LeggedRobot):
         return sample_x.gather(1, idx.unsqueeze(1)).squeeze(1)
 
     def _apply_crossing_pause_commands(self):
-        """Auto-pause when straddling; exit only after both feet clear the stripe."""
+        """Auto-pause when straddling; capped resume until both feet clear."""
         straddling = self._is_straddling_obstacle()
+        self.crossing_both_cleared_event[:] = False
 
         entering = (
             straddling
             & ~self.crossing_pause_active
             & ~self.crossing_pause_done
-            & ~self.crossing_clear_active
             & (self.commands[:, 0] > 0.05)
         )
         if entering.any():
@@ -242,10 +246,8 @@ class G1Robot(LeggedRobot):
             if finished.any():
                 self.crossing_pause_active[finished] = False
                 self.crossing_pause_done[finished] = True
-                self.commands[finished, 0] = self.crossing_cmd_stored[finished]
-                self.commands[finished, 1:3] = 0.0
 
-                # Immediately latch elevated swing for the trailing foot.
+                # Latch elevated swing (same target for either foot while swinging).
                 stripe_x = torch.where(
                     self.swing_clearance_active,
                     self.active_stripe_x,
@@ -253,27 +255,36 @@ class G1Robot(LeggedRobot):
                 )
                 mid_y = self.feet_pos[:, :, 1].mean(dim=1)
                 sampled_h = self._sample_terrain_height_world(stripe_x, mid_y)
+                # Aggressive floor on latch height so swing target is never too low.
+                min_h = 0.12
                 stripe_h = torch.where(
                     self.swing_clearance_active,
                     self.active_stripe_height,
-                    torch.where(
-                        sampled_h > 0.03, sampled_h, torch.full_like(sampled_h, 0.10)
-                    ),
+                    sampled_h,
                 )
+                stripe_h = torch.maximum(stripe_h, torch.full_like(stripe_h, min_h))
                 self.swing_clearance_active[finished] = True
                 self.active_stripe_x[finished] = stripe_x[finished]
                 self.active_stripe_height[finished] = stripe_h[finished]
                 self.crossing_stripe_x[finished] = stripe_x[finished]
-                self.crossing_clear_active[finished] = True
 
             self.commands[self.crossing_pause_active, :3] = 0.0
 
-        # Restore normal gait / allow next pause only after both feet are past.
+        # Until both feet clear: hold a capped forward cmd (not full speed lunging).
+        if self.crossing_pause_done.any():
+            resume_cmd = self.cfg.commands.crossing_resume_cmd
+            still = self.crossing_pause_done
+            self.commands[still, 0] = resume_cmd
+            self.commands[still, 1:3] = 0.0
+
         both_past = (
             self.feet_pos[:, :, 0] > (self.crossing_stripe_x.unsqueeze(1) + 0.1)
         ).all(dim=1)
-        cleared = (self.crossing_clear_active | self.crossing_pause_done) & both_past
-        self.crossing_clear_active &= ~cleared
+        cleared = self.crossing_pause_done & both_past
+        if cleared.any():
+            self.crossing_both_cleared_event[cleared] = True
+            self.commands[cleared, 0] = self.crossing_cmd_stored[cleared]
+            self.commands[cleared, 1:3] = 0.0
         self.crossing_pause_done &= ~cleared
 
     # ----- biped gait rewards -------------------------------------------
@@ -317,16 +328,9 @@ class G1Robot(LeggedRobot):
             res += ~(contact ^ is_stance)
         if training_stage == 4:
             contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
-            # Pause: double support.
+            # Pause only: double support. After resume, same phase gait for both feet.
             double_support = contact.all(dim=1).float() * float(self.feet_num)
             res = torch.where(self.crossing_pause_active, double_support, res)
-            # After pause: lead stance + rear swing until rear clears and lands.
-            lead_idx = self.feet_pos[:, :, 0].argmax(dim=1)
-            rear_idx = self.feet_pos[:, :, 0].argmin(dim=1)
-            lead_contact = contact.gather(1, lead_idx.unsqueeze(1)).squeeze(1)
-            rear_contact = contact.gather(1, rear_idx.unsqueeze(1)).squeeze(1)
-            clear_contact = lead_contact.float() + (~rear_contact).float()
-            res = torch.where(self.crossing_clear_active, clear_contact, res)
         return res
 
     def _get_feet_terrain_heights(self):
@@ -365,16 +369,29 @@ class G1Robot(LeggedRobot):
         return self.crossing_pause_active.float() * stillness
 
     def _reward_trailing_clearance(self):
-        # Stage 4: penalize swing foot passing over stripe without enough height.
+        # Stage 4: penalize any swing foot passing over stripe without enough height.
         if training_stage != 4:
             return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
         terrain_h = self._get_feet_terrain_heights()
         contact = self.contact_forces[:, self.feet_indices, 2] > 1.0
         swing = ~contact
         over_stripe = terrain_h > 0.03
-        clearance_margin = 0.08
+        clearance_margin = self._swing_clearance()
         too_low = swing & over_stripe & (self.feet_pos[:, :, 2] < terrain_h + clearance_margin)
         return too_low.float().sum(dim=1)
+
+    def _reward_crossing_stuck(self):
+        # Stage 4: after pause, strongly penalize any foot still behind the stripe.
+        if training_stage != 4:
+            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+        behind = self.feet_pos[:, :, 0] < (self.crossing_stripe_x.unsqueeze(1) + 0.1)
+        return self.crossing_pause_done.float() * behind.float().sum(dim=1)
+
+    def _reward_crossing_clear(self):
+        # Stage 4: terminal bonus when both feet first clear after a pause.
+        if training_stage != 4:
+            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+        return self.crossing_both_cleared_event.float()
 
     def _reward_feet_swing_height(self):
         contact = torch.norm(self.contact_forces[:, self.feet_indices, :3], dim=2) > 1.0
