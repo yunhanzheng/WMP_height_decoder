@@ -182,6 +182,9 @@ def get_args():
         {"name": "--visualize-latent-sensitivity", "action": "store_true", "default": False, "help": "Visualize saliency of 32-dim wm_latent w.r.t. proprioception history (unrolled WM)"},
         {"name": "--cat-test", "action": "store_true", "default": False, "help": "Run cat experiment: stop robot at first stripe, hold, then resume"},
         {"name": "--visualize-binary-height", "action": "store_true", "default": False, "help": "Show live binary footprint probability map from world model decoder"},
+        {"name": "--ablate-wm", "type": str, "default": "none",
+         "help": "WM intervention ablation for play: none | zero (always zero wm_feature to actor) | "
+                 "reset_on_pause (reset RSSM + zero wm_feature during stop/pause until trail clears)"},
     ]
     # parse arguments
     args = gymutil.parse_arguments(

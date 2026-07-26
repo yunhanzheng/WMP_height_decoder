@@ -1,9 +1,9 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-training_stage = 4
+training_stage = 2
 # 1 = flat terrain + full cmd_vel
-# 2 = sparse stripes (3-5, 2.2-5.0 m) + forward-only, basic crossing rewards
-# 3 = sparse stripes (3-5, 2.2-5.0 m) + clean step-over (all latest fixes)
+# 2 = sparse stripes (3-5, 2.2-5.0 m) + forward-only; stop when a foot crosses & lands
+# 3 = GO2-stage1 style: domino terrain + full cmd_vel, no pause
 # 4 = stripe mid-cross pause + aggressive clearance: capped resume, stuck penalty, clear bonus
 
 
@@ -29,7 +29,7 @@ class G1BaseCfg(LeggedRobotCfg):
             curriculum = False
             difficulty = 0.0  # required when curriculum=False (randomized_terrain path)
         elif training_stage == 2:
-            # [8]: sparse stripes — learn basic forward crossing
+            # [8]: sparse stripes (3-5 per tile, gap 2.2-5.0 m); curriculum raises height by row
             terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
             curriculum = True
             stripe_num_rects_min = 3
@@ -37,15 +37,11 @@ class G1BaseCfg(LeggedRobotCfg):
             stripe_min_gap = 2.2
             stripe_max_gap = 5.0
         elif training_stage == 3:
-            # [8]: sparse stripes — clean step-over without stepping on top
-            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+            # GO2 stage-1 style: domino terrain, full cmd_vel, no pause
+            terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]
             curriculum = True
-            stripe_num_rects_min = 3
-            stripe_num_rects_max = 5
-            stripe_min_gap = 2.2
-            stripe_max_gap = 5.0
         elif training_stage == 4:
-            # [8]: same sparse stripes as stage 3 — mid-cross pause + clearance
+            # [8]: same sparse stripes as stage 2 — mid-cross pause + clearance
             terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
             curriculum = True
             stripe_num_rects_min = 3
@@ -54,7 +50,11 @@ class G1BaseCfg(LeggedRobotCfg):
             stripe_max_gap = 5.0
 
         mesh_type = "trimesh"
-        max_init_terrain_level = 0  # start on flat ground (level 0); curriculum raises difficulty as robot succeeds
+        # GO2 stage-1 starts mid curriculum; other stages start on easiest level
+        if training_stage == 3:
+            max_init_terrain_level = 5
+        else:
+            max_init_terrain_level = 0
         border_size = 25
         terrain_length = 7.5
         terrain_width = 7.5
@@ -219,25 +219,28 @@ class G1BaseCfg(LeggedRobotCfg):
                 feet_swing_height = -2.0
                 yaw_alignment = -1.0
             elif training_stage == 2:
-                feet_swing_height = -2.0
-                feet_air_time = 0.05
-                feet_stumble = -0.3
+                # Match de95327 stage-2 reward set
+                base_height = -10.0
                 collision = -1.0
+                feet_stumble = -0.1
+                stand_still = -0.01
+                feet_swing_height = -20.0
                 feet_step = -0.5
-                yaw_alignment = -1.0
             elif training_stage == 3:
-                feet_swing_height = -5.0
-                feet_air_time = 0.1
-                feet_stumble = -0.8
-                feet_obstacle_contact = -2.0
+                # GO2 stage-1 style rewards (no pause / no stripe-clear terms)
+                feet_swing_height = -20.0
+                feet_air_time = 0.01
+                feet_stumble = -0.1
                 collision = -1.0
-                feet_step = -0.5
+                stand_still = -0.01
+                feet_step = 0.0
                 yaw_alignment = -1.0
             elif training_stage == 4:
                 crossing_pause = 2.0
                 crossing_clear = 5.0
                 crossing_stuck = -3.0
-                feet_swing_height = -8.0
+                planted_still = -3.0
+                feet_swing_height = -5.0
                 feet_air_time = 0.2
                 feet_stumble = -1.5
                 feet_obstacle_contact = -4.0
@@ -245,7 +248,7 @@ class G1BaseCfg(LeggedRobotCfg):
                 collision = -1.0
                 feet_step = -0.5
                 contact_no_vel = -0.5
-                lin_vel_z = -0.5  # allow higher steps during aggressive clearance
+                lin_vel_z = -0.5
                 yaw_alignment = -1.0
 
     class noise:
@@ -269,14 +272,19 @@ class G1BaseCfg(LeggedRobotCfg):
 
         num_commands = 4  # lin_vel_x, lin_vel_y, ang_vel_yaw, heading
         resampling_time = 10.
-        if training_stage == 1:
+        if training_stage == 1 or training_stage == 3:
             heading_command = True
         elif training_stage == 2:
-            heading_command = False
-        elif training_stage == 3 or training_stage == 4:
+            heading_command = False  # world-frame lin_vel; yaw via ang_vel_yaw (de95327)
+        elif training_stage == 4:
             heading_command = True  # lock heading to world +x
 
-        use_stop_and_go = False
+        if training_stage == 2:
+            # Stop when any foot has crossed a stripe and landed; resume after stop timer
+            use_stop_and_go = True
+            stop_and_go_trigger = "foot_cross"
+        else:
+            use_stop_and_go = False
         moving_time_range = [3.0, 6.0]
         stop_time_range = [2.0, 4.0]
         crossing_pause_time_range = [2.0, 4.0]
@@ -284,13 +292,13 @@ class G1BaseCfg(LeggedRobotCfg):
         crossing_resume_cmd = 0.4
 
         class ranges:
-            if training_stage == 1:
-                # full cmd_vel
+            if training_stage == 1 or training_stage == 3:
+                # full cmd_vel (GO2 stage-1 style for stage 3)
                 lin_vel_x = [-1.0, 1.0]  # min max [m/s]
                 lin_vel_y = [-1.0, 1.0]  # min max [m/s]
                 ang_vel_yaw = [-3.14, 3.14]  # min max [rad]
                 heading = [-3.14, 3.14]  # min max [rad/s]
-            elif training_stage == 2 or training_stage == 3 or training_stage == 4:
+            elif training_stage == 2 or training_stage == 4:
                 # forward-only cmd_vel
                 lin_vel_x = [0.0, 1.0]  # min max [m/s]
                 lin_vel_y = [0.0, 0.0]  # min max [m/s]

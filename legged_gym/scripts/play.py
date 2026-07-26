@@ -49,6 +49,18 @@ import torch
 import matplotlib.pyplot as plt
 
 
+def _in_wm_ablate_window(env):
+    """True while stopped/paused or still clearing after stop (trail foot needs memory)."""
+    active = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    if hasattr(env, "crossing_pause_active"):
+        active |= env.crossing_pause_active | env.crossing_pause_done
+    if hasattr(env, "post_stop_clear_active"):
+        active |= env.post_stop_clear_active
+    if hasattr(env, "cmd_phase_moving") and getattr(env.cfg.commands, "use_stop_and_go", False):
+        active |= ~env.cmd_phase_moving
+    return active
+
+
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     # override some parameters for testing
@@ -107,6 +119,18 @@ def play(args):
     VISUALIZE_GHOST = getattr(args, 'visualize_ghost', False)
     if VISUALIZE_GHOST:
         print("Ghost robot visualization enabled (debug drawing mode)")
+
+    ablate_wm = getattr(args, "ablate_wm", "none") or "none"
+    ablate_wm = ablate_wm.lower().strip()
+    if ablate_wm not in ("none", "zero", "reset_on_pause"):
+        raise ValueError(
+            f"--ablate-wm must be none|zero|reset_on_pause, got {ablate_wm!r}"
+        )
+    if ablate_wm != "none":
+        print(
+            f"[ablate-wm={ablate_wm}] Intervention ablation ON. "
+            "Compare trail-foot clearance vs --ablate-wm none."
+        )
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
@@ -177,6 +201,8 @@ def play(args):
 
     # Initialize world model components only if using WMPRunner
     use_world_model = hasattr(ppo_runner, '_world_model')
+    if ablate_wm != "none" and not use_world_model:
+        print(f"[ablate-wm] WARNING: runner has no world model; --ablate-wm={ablate_wm} has no effect")
 
     # Check if using LongShortRunner
     use_long_short = isinstance(ppo_runner, type) and 'LongShortRunner' in str(type(ppo_runner)) or \
@@ -314,6 +340,8 @@ def play(args):
                                           device=world_model.device)
 
         wm_feature = torch.zeros((env.num_envs, ppo_runner.wm_feature_dim), device=env.device)
+        # Rising-edge tracker for reset_on_pause ablation
+        wm_ablate_prev = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
 
         # Initialize latent history for visualization
         latent_history = []
@@ -419,6 +447,33 @@ def play(args):
         # Mid-crossing pause (cmd=0) is handled in G1Robot during play
 
         if use_world_model:
+            ablate_mask = _in_wm_ablate_window(env) if ablate_wm == "reset_on_pause" else None
+            if ablate_wm == "reset_on_pause":
+                entering = ablate_mask & ~wm_ablate_prev
+                if entering.any():
+                    wm_is_first[entering] = 1
+                    wm_obs["is_first"] = wm_is_first
+                    # Drop stale latent so obs_step re-inits from scratch for those envs.
+                    if wm_latent is not None and entering.all():
+                        wm_latent = None
+                    elif wm_latent is not None:
+                        init_state = world_model.dynamics.initial(env.num_envs)
+                        for key, val in wm_latent.items():
+                            shape = (entering.shape[0],) + (1,) * (val.ndim - 1)
+                            mask = entering.view(*shape).to(val.dtype)
+                            wm_latent[key] = val * (1.0 - mask) + init_state[key] * mask
+                    print(
+                        f"[ablate-wm] step={i}: reset RSSM + zero wm_feature "
+                        f"(stop/pause entered, envs={entering.nonzero(as_tuple=False).view(-1).tolist()})"
+                    )
+                leaving = wm_ablate_prev & ~ablate_mask
+                if leaving.any():
+                    print(
+                        f"[ablate-wm] step={i}: restore wm_feature "
+                        f"(clear finished, envs={leaving.nonzero(as_tuple=False).view(-1).tolist()})"
+                    )
+                wm_ablate_prev = ablate_mask.clone()
+
             if (env.global_counter % wm_update_interval == 0):
                 if (env.cfg.depth.use_camera):
                     wm_obs["image"][env.depth_index] = infos["depth"].unsqueeze(-1).to(world_model.device)
@@ -427,6 +482,7 @@ def play(args):
                 wm_latent, _ = world_model.dynamics.obs_step(wm_latent, wm_action, wm_embed, wm_obs["is_first"], sample=True)
                 wm_feature = world_model.dynamics.get_deter_feat(wm_latent)
                 wm_is_first[:] = 0
+                wm_obs["is_first"] = wm_is_first
 
                 # Collect compressed deterministic state for visualization
                 # This is the output of wm_feature_encoder (512 -> 16) that gets passed to actor-critic
@@ -457,6 +513,16 @@ def play(args):
                     _bh_img.set_data(_bh_grid)
                     _bh_fig.canvas.flush_events()
                     plt.pause(0.001)
+
+            # Intervention: zero wm_feature seen by the actor (WM may still update for viz).
+            if ablate_wm == "zero":
+                wm_feature = torch.zeros_like(wm_feature)
+            elif ablate_wm == "reset_on_pause" and ablate_mask is not None and ablate_mask.any():
+                wm_feature = torch.where(
+                    ablate_mask.unsqueeze(-1),
+                    torch.zeros_like(wm_feature),
+                    wm_feature,
+                )
 
         if use_world_model:
             history = trajectory_history.flatten(1).to(env.device)
