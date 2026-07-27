@@ -226,6 +226,9 @@ class G1BaseCfg(LeggedRobotCfg):
                 stand_still = -0.01
                 feet_swing_height = -20.0
                 feet_step = -0.5
+                # After lateral collision: continuous penalty until first foot past; one bonus per stripe
+                obstacle_stuck = -2.0
+                obstacle_cross = 10.0
             elif training_stage == 3:
                 # GO2 stage-1 style rewards (no pause / no stripe-clear terms)
                 feet_swing_height = -20.0

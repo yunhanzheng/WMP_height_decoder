@@ -57,6 +57,21 @@ class G1Robot(LeggedRobot):
             self.post_stop_clear_active = torch.zeros(
                 self.num_envs, dtype=torch.bool, device=self.device
             )
+            # After lateral hit: continuous stuck penalty until any foot past
+            self.obstacle_hit_pending = torch.zeros(
+                self.num_envs, dtype=torch.bool, device=self.device
+            )
+            # One-frame pulse when first foot clears after a hit
+            self.obstacle_cross_event = torch.zeros(
+                self.num_envs, dtype=torch.bool, device=self.device
+            )
+            self.prev_lateral_hit = torch.zeros(
+                self.num_envs, dtype=torch.bool, device=self.device
+            )
+            # Stripe x already given a cross bonus (each stripe rewarded at most once)
+            self.obstacle_rewarded_stripe_x = torch.full(
+                (self.num_envs,), -1e6, device=self.device
+            )
         if training_stage == 4:
             self.crossing_pause_active = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
             self.crossing_pause_timer = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
@@ -79,6 +94,10 @@ class G1Robot(LeggedRobot):
             self.cmd_was_moving[env_ids] = False
             self.prev_foot_crossed_landed[env_ids] = False
             self.post_stop_clear_active[env_ids] = False
+            self.obstacle_hit_pending[env_ids] = False
+            self.obstacle_cross_event[env_ids] = False
+            self.prev_lateral_hit[env_ids] = False
+            self.obstacle_rewarded_stripe_x[env_ids] = -1e6
         if training_stage == 4:
             self.crossing_pause_active[env_ids] = False
             self.crossing_pause_timer[env_ids] = 0.0
@@ -194,9 +213,17 @@ class G1Robot(LeggedRobot):
         return xy_force > 5.0 * z_force
 
     def _update_swing_clearance_stage2(self):
-        """de95327: on lateral hit, target stripe_h+0.08; clear after both past & low."""
+        """On lateral hit: elevate swing target; clear after both past & low.
+
+        Stuck penalty arms only on lateral collision (not planting). Continuous until
+        any foot past the stripe; one-shot cross bonus once per stripe.
+        """
         hit = self._lateral_foot_hit()
-        if hit.any():
+        activating = hit.any(dim=1)
+        rising_hit = activating & ~self.prev_lateral_hit
+        self.prev_lateral_hit[:] = activating
+
+        if activating.any():
             ahead_x = self.feet_pos[:, :, 0] + 0.1
             stripe_h = torch.maximum(
                 self._sample_terrain_height_world(self.feet_pos[:, :, 0], self.feet_pos[:, :, 1]),
@@ -207,13 +234,25 @@ class G1Robot(LeggedRobot):
             new_h, hit_idx = hit_h.max(dim=1)
             new_x = self.feet_pos[:, :, 0].gather(1, hit_idx.unsqueeze(1)).squeeze(1)
             new_h = torch.where(new_h > 0.03, new_h, torch.full_like(new_h, 0.10))
-            activating = hit.any(dim=1)
             self.swing_clearance_active |= activating
             self.active_stripe_height = torch.where(
                 activating, new_h, self.active_stripe_height
             )
             self.active_stripe_x = torch.where(activating, new_x, self.active_stripe_x)
             self.phase[activating] = 0.0
+
+        any_past = (
+            self.feet_pos[:, :, 0] > (self.active_stripe_x.unsqueeze(1) + 0.1)
+        ).any(dim=1)
+        # New stripe only: skip if this stripe already received the cross bonus.
+        new_stripe = (self.active_stripe_x - self.obstacle_rewarded_stripe_x).abs() > 0.5
+        self.obstacle_hit_pending |= rising_hit & ~any_past & new_stripe
+        crossed = self.obstacle_hit_pending & any_past
+        self.obstacle_cross_event[:] = crossed
+        self.obstacle_rewarded_stripe_x = torch.where(
+            crossed, self.active_stripe_x, self.obstacle_rewarded_stripe_x
+        )
+        self.obstacle_hit_pending &= ~any_past
 
         both_past = (
             self.feet_pos[:, :, 0] > (self.active_stripe_x.unsqueeze(1) + 0.1)
@@ -538,6 +577,18 @@ class G1Robot(LeggedRobot):
         h4 = self.height_samples[foot_px + 1, foot_py + 1]
         terrain_h = torch.max(torch.max(h1, h2), torch.max(h3, h4))
         return terrain_h.float() * self.terrain.cfg.vertical_scale
+
+    def _reward_obstacle_stuck(self):
+        # Stage 2: after touching an obstacle, keep penalizing until any foot is past.
+        if training_stage != 2:
+            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+        return self.obstacle_hit_pending.float()
+
+    def _reward_obstacle_cross(self):
+        # Stage 2: one-shot bonus when the first foot clears after a hit.
+        if training_stage != 2:
+            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+        return self.obstacle_cross_event.float()
 
     def _reward_feet_obstacle_contact(self):
         # Stage 4: penalize planting feet on raised stripes.
