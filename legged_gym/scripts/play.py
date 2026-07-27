@@ -61,8 +61,94 @@ def _in_wm_ablate_window(env):
     return active
 
 
+def _feet_world_pos(env):
+    """Feet world positions (num_envs, n_feet, 3)."""
+    if hasattr(env, "feet_pos"):
+        return env.feet_pos
+    return env.rigid_body_states.view(env.num_envs, -1, 13)[:, env.feet_indices, :3]
+
+
+def _foot_names(env):
+    names = env.gym.get_actor_rigid_body_names(env.envs[0], env.actor_handles[0])
+    return [names[i] for i in env.feet_indices.tolist()]
+
+
+def _stripe_x_for_trail(env, robot_index=0):
+    """Best-known stripe x for trail-foot checks."""
+    if hasattr(env, "active_stripe_x") and abs(env.active_stripe_x[robot_index].item()) > 1e-3:
+        return float(env.active_stripe_x[robot_index].item())
+    if hasattr(env, "crossing_stripe_x") and abs(env.crossing_stripe_x[robot_index].item()) > 1e-3:
+        return float(env.crossing_stripe_x[robot_index].item())
+    return None
+
+
+def _detect_trail_foot_obstacle_hit(env, robot_index=0, stripe_half_width=0.12):
+    """Detect whether the trail (behind-stripe) foot hits the obstacle.
+
+    Hit if that foot has lateral stumble force, or contacts while over raised terrain
+    near the stripe. Returns (hit, foot_name, reason) or (False, None, None).
+    """
+    feet_pos = _feet_world_pos(env)[robot_index]  # (n_feet, 3)
+    n_feet = feet_pos.shape[0]
+    names = _foot_names(env)
+
+    stripe_x = _stripe_x_for_trail(env, robot_index)
+    if stripe_x is None:
+        # Fallback: any foot currently over raised terrain is a candidate "trail" if
+        # it is the rear-most among feet over/near raised ground.
+        if not hasattr(env, "_get_feet_terrain_heights"):
+            return False, None, None
+        terrain_h = env._get_feet_terrain_heights()[robot_index]
+        over = terrain_h > 0.03
+        if not over.any():
+            return False, None, None
+        # Treat rear-most foot that is over raised terrain as trail
+        x = feet_pos[:, 0].clone()
+        x[~over] = 1e6
+        trail_i = int(x.argmin().item())
+        stripe_x = float(feet_pos[trail_i, 0].item())
+        trail_mask = torch.zeros(n_feet, dtype=torch.bool, device=env.device)
+        trail_mask[trail_i] = True
+    else:
+        trail_mask = feet_pos[:, 0] < (stripe_x + 0.10)
+        if not trail_mask.any():
+            return False, None, None
+
+    # Lateral stumble (same as feet_stumble / _lateral_foot_hit)
+    f = env.contact_forces[robot_index, env.feet_indices]
+    xy = torch.norm(f[:, :2], dim=-1)
+    z = torch.abs(f[:, 2])
+    lateral = xy > 5.0 * z
+
+    # Contact while foot is on/near raised stripe
+    if hasattr(env, "_get_feet_terrain_heights"):
+        terrain_h = env._get_feet_terrain_heights()[robot_index]
+    else:
+        terrain_h = torch.zeros(n_feet, device=env.device)
+    near_stripe = (feet_pos[:, 0] - stripe_x).abs() < stripe_half_width
+    on_raised = terrain_h > 0.03
+    contact = z > 1.0
+    bump = contact & near_stripe & on_raised
+
+    hit_mask = trail_mask & (lateral | bump)
+    if not hit_mask.any():
+        return False, None, None
+
+    i = int(hit_mask.nonzero(as_tuple=False)[0].item())
+    reasons = []
+    if lateral[i]:
+        reasons.append(f"lateral Fxy={xy[i].item():.1f} N (Fz={z[i].item():.1f})")
+    if bump[i]:
+        reasons.append(f"contact on raised terrain h={terrain_h[i].item():.3f}m")
+    return True, names[i], "; ".join(reasons)
+
+
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
+    # Random seed each play run unless --seed is passed explicitly.
+    if getattr(args, "seed", None) is None:
+        train_cfg.seed = -1
+        env_cfg.seed = -1
     # override some parameters for testing
     # env_cfg.env.num_envs = min(env_cfg.env.num_envs, 50)
     env_cfg.env.num_envs = 1
@@ -443,6 +529,9 @@ def play(args):
 
     total_reward = 0
     not_dones = torch.ones((env.num_envs,), device=env.device)
+    trail_hit_prev = False
+    trail_hit_count = 0
+    trail_hit_first_step = None
     for i in range(1*int(env.max_episode_length) + 3):
         # Mid-crossing pause (cmd=0) is handled in G1Robot during play
 
@@ -632,6 +721,19 @@ def play(args):
 
         obs, _, rews, dones, infos, reset_env_ids, _ = env.step(actions.detach())
 
+        # Trail-foot vs stripe: rising-edge log
+        hit, foot_name, reason = _detect_trail_foot_obstacle_hit(env, robot_index)
+        if hit and not trail_hit_prev:
+            trail_hit_count += 1
+            if trail_hit_first_step is None:
+                trail_hit_first_step = i
+            print(
+                f"[trail-hit] step={i} foot={foot_name}: {reason}"
+            )
+        trail_hit_prev = hit
+        if dones.any():
+            trail_hit_prev = False
+
         if SLOW_MOTION:
             time.sleep(0.05)
 
@@ -733,6 +835,13 @@ def play(args):
             logger.print_rewards()
 
     print('total reward:', total_reward)
+    if trail_hit_count > 0:
+        print(
+            f"[trail-hit] summary: {trail_hit_count} trail-foot obstacle hit(s); "
+            f"first at step={trail_hit_first_step}"
+        )
+    else:
+        print("[trail-hit] summary: no trail-foot obstacle hit detected")
 
     # Visualize proprioception sensitivity (saliency) as greyscale heatmap
     if use_world_model and VISUALIZE_SENSITIVITY and sensitivity_map_fl:
